@@ -25,12 +25,10 @@ my $doDQM = 0;
 
 my $PBfile;
 
-my $monitorCount = 0;
-
 
 # hostname, default
 my $hostname = $ENV{"HOST"};
-
+my $user     = $ENV{"USER"};
 
 # set variables
 my $BUport = 40000;
@@ -65,6 +63,8 @@ my $PTlibname = "libpttcp.so";
 my $SMperl = 
     $ENV{"CMSSW_RELEASE_BASE"} .
     "/src/EventFilter/StorageManager/scripts/perl";
+my $SMout = "/tmp/$user/sm";
+
 
 my $pwd = `pwd`; chomp $pwd;
 
@@ -93,14 +93,14 @@ if (!$doSM) { $doDQM = 0; }
 # make directories
 #
 print "make directories ...\n";
-`mkdir log`            if (! -e "log");
-`mkdir soap`           if (! -e "soap");
-`mkdir xml`            if (! -e "xml");
-`mkdir cfg`            if (! -e "cfg");
-`mkdir /tmp/sm`        if (! -e "/tmp/sm");
-`mkdir /tmp/sm/open`   if (! -e "/tmp/sm/open");
-`mkdir /tmp/sm/closed` if (! -e "/tmp/sm/closed");
-`mkdir /tmp/sm/mbox`   if (! -e "/tmp/sm/mbox");
+`mkdir log`                  if (! -e "log");
+`mkdir soap`                 if (! -e "soap");
+`mkdir xml`                  if (! -e "xml");
+`mkdir cfg`                  if (! -e "cfg");
+`mkdir -p $SMout`     if (! -e "$SMout");
+`mkdir $SMout/open`   if (! -e "$SMout/open");
+`mkdir $SMout/closed` if (! -e "$SMout/closed");
+`mkdir $SMout/mbox`   if (! -e "$SMout/mbox");
 
 
 #
@@ -443,7 +443,7 @@ sub makeCfgFu
     $result = $result . "  // source\n";
     $result = $result . "  source = DaqSource\n";
     $result = $result . "  {\n";
-    $result = $result . "    string          reader    = \"FUShmReader\"\n";
+    $result = $result . "    untracked string      readerPluginName =  \"FUShmReader\"\n";
     $result = $result . "  }\n\n";
     $result = $result . "  // paths\n";
     $result = $result . "  path p1 = { m1, a1 }\n";
@@ -461,9 +461,9 @@ sub makeCfgFu
     $result = $result . "  service = MessageLogger {\n";
     $result = $result . "    untracked vstring destinations = { \"cout\" }\n";
     $result = $result . "    untracked PSet    cout         = " .
-	                "{ untracked string threshold = \"FATAL\" }\n";
-    $result = $result . "    untracked PSet    log4cplus    = " .
-                        "{ untracked string threshold = \"WARNING\" }\n";
+	                "{ untracked string threshold = \"WARNING\" }\n";
+    #$result = $result . "    untracked PSet    log4cplus    = " .
+    #                    "{ untracked string threshold = \"WARNING\" }\n";
     $result = $result . "  }\n\n";
 
     $result = $result . "  service = FUShmDQMOutputService {\n";
@@ -543,8 +543,8 @@ sub makeCfgSm
     $result = $result . "    int32 compression_level =       1\n\n";
     $result = $result . "    string fileName           =     \"storageManager\"\n";
     $result = $result . "    string indexFileName      = \"storageManager.ind\"\n";
-    $result = $result . "    string filePath           =            \"/tmp/sm\"\n";
-    $result = $result . "    string mailboxPath        =       \"/tmp/sm/mbox\"\n";
+    $result = $result . "    string filePath           =             \"$SMout\"\n";
+    $result = $result . "    string mailboxPath        =        \"$SMout/mbox\"\n";
     $result = $result . "    string setupLabel         =               \"mtcc\"\n";
     $result = $result . "    string streamLabel        =                  \"A\"\n";
     $result = $result . "    int32  maxSize            =            536870912\n";
@@ -560,13 +560,13 @@ sub makeCfgSm
     $result = $result . "    int32 compression_level =       1\n\n";
     $result = $result . "    string fileName           =     \"storageManager\"\n";
     $result = $result . "    string indexFileName      = \"storageManager.ind\"\n";
-    $result = $result . "    string filePath           =            \"/tmp/sm\"\n";
-    $result = $result . "    string mailboxPath        =       \"/tmp/sm/mbox\"\n";
+    $result = $result . "    string filePath           =             \"$SMout\"\n";
+    $result = $result . "    string mailboxPath        =        \"$SMout/mbox\"\n";
     $result = $result . "    string setupLabel         =               \"mtcc\"\n";
     $result = $result . "    string streamLabel        =                  \"B\"\n";
     $result = $result . "    int32  maxSize            =           1073741824\n";
     $result = $result . "    double highWaterMark      =                  0.9\n";
-    $result = $result . "    double lumiSectionTimeOut =                 10.0\n\n";
+    $result = $result . "    double lumiSectionTimeOut =               10.0\n\n";
     $result = $result . "    untracked PSet SelectEvents = { vstring SelectEvents={\"p2\"}}\n";
     $result = $result . "  }\n\n";
     $result = $result . "  module out3 = EventStreamFileWriter\n";
@@ -577,13 +577,13 @@ sub makeCfgSm
     $result = $result . "    int32 compression_level =       1\n\n";
     $result = $result . "    string fileName           =     \"storageManager\"\n";
     $result = $result . "    string indexFileName      = \"storageManager.ind\"\n";
-    $result = $result . "    string filePath           =            \"/tmp/sm\"\n";
-    $result = $result . "    string mailboxPath        =       \"/tmp/sm/mbox\"\n";
+    $result = $result . "    string filePath           =             \"$SMout\"\n";
+    $result = $result . "    string mailboxPath        =        \"$SMout/mbox\"\n";
     $result = $result . "    string setupLabel         =               \"mtcc\"\n";
     $result = $result . "    string streamLabel        =                  \"C\"\n";
     $result = $result . "    int32  maxSize            =           1073741824\n";
     $result = $result . "    double highWaterMark      =                  0.9\n";
-    $result = $result . "    double lumiSectionTimeOut =                 10.0\n\n";
+    $result = $result . "    double lumiSectionTimeOut =               10.0\n\n";
     $result = $result . "    untracked PSet SelectEvents = { vstring SelectEvents={\"p3\"}}\n";
     $result = $result . "  }\n\n";
     $result = $result . "}\n";
@@ -828,7 +828,7 @@ sub makeCtlDestroy
     $result = $result . "print \"$cmd ...\\n\";\n\n";
     $result = $result . "`$cmd`;\n\n";
     $result = $result . "print \"remove files and dirs ...\n\";\n\n";
-    $result = $result . "`rm -rf cfg/ soap/ xml/ flash/ log/ /tmp/sm " .
+    $result = $result . "`rm -rf cfg/ soap/ xml/ flash/ log/ $SMout " .
 	"configure enable halt stop gennums.txt summaryCatalog.txt test.root`;\n\n";
     $result = $result . "print \"FUShmCleanUp_t ...\\n\";\n\n";
     $result = $result . "`FUShmCleanUp_t`;\n\n";
