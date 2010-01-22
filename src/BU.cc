@@ -747,7 +747,7 @@ bool BU::generateEvent(BUEvent* evt)
       unsigned int   fedId  =validFedIds_[i];
       unsigned int   fedSize=event->FEDData(fedId).size();
       unsigned char* fedAddr=event->FEDData(fedId).data();
-      if (overwriteEvtId_.value_) {
+      if (overwriteEvtId_.value_ && fedAddr != 0) {
 	fedh_t *fedHeader=(fedh_t*)fedAddr;
 	fedHeader->eventid=(fedHeader->eventid&0xFF000000)+(evtNumber&0x00FFFFFF);
       }
