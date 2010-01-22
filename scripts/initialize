@@ -23,11 +23,12 @@ my $runNumber = 10;
 # flags to indicate setup, defaults
 my $doPB  = 0;
 my $doEP  = 1;
-my $doPyCfg  = 0;
+my $doPyCfg  = 1;
 my $doSM  = 1;
 my $doDQM = 0;
 my $useStepper = 0;
 my $useAtcp = 1;
+my $forkProcesses = 0;
 
 my $PBfile;
 my $EPcfg = "";
@@ -97,7 +98,9 @@ foreach $param (@ARGV) {
     elsif ($param    eq "-debug")    { $useStepper=1; }
     elsif ($param    eq "-tcp")      { $useAtcp=0; }
     elsif ($param    eq "-noDQM")    { $doDQM=0; }
-    elsif ($param    eq "-python")   { $doPyCfg=1; }
+    elsif ($param    eq "-cfg")      { $doPyCfg=0; }
+    elsif ($param    eq "-fork")     { $forkProcesses="fillme"; }
+    elsif ($forkProcesses    eq "fillme")    { $forkProcesses   =$param; }
     else { die ("Unknown parameter $param!\n"); }
 }
 
@@ -234,7 +237,8 @@ my @RBproperties = ("runNumber",   "unsignedInt",$runNumber,
 if (!$doEP) { push (@RPproperties,"doDropEvents","boolean","true"); }
 
 my @EPproperties = ("parameterSet",  "string",      "file:$EPcfg",
-		    "runNumber",     "unsignedInt", $runNumber);
+		    "runNumber",     "unsignedInt", $runNumber,
+		    "nbSubProcesses","unsignedInt", $forkProcesses);
                       
 
 if (!$doSM) { push (@EPproperties,"outputEnabled","boolean","false"); }
@@ -505,9 +509,9 @@ sub makeSoapCommand
     $result = $result . "  <xr:to url=\"http://$hostname:$port\" urn=\"urn:xdaq-application:lid=$localid\"/>\n";
     $result = $result . "</xr:relay>\n";
     $result = $result . "</SOAP-ENV:Header>\n\n";
-    $result = $result . "<SOAP-ENV:Body>\n";
-    $result = $result . "  <xdaq:$command xmlns:xdaq=\"urn:xdaq-soap:3.0\"></xdaq:$command>\n";
-    $result = $result . "</SOAP-ENV:Body>\n\n";
+    $result = $result . "<SOAP-ENV:Body>";
+    $result = $result . "<xdaq:$command xmlns:xdaq=\"urn:xdaq-soap:3.0\"></xdaq:$command>";
+    $result = $result . "</SOAP-ENV:Body>\n";
     $result = $result . "</SOAP-ENV:Envelope>\n";
     
     return $result;
@@ -553,14 +557,16 @@ sub makeCfgFu
     $result = $result . "  endpath ep = { out }\n\n";
     
     $result = $result . "  // services\n\n";
-    $result = $result . "  service = DQMStore { }\n\n";
+#    $result = $result . "  service = DQMStore { }\n\n";
     if ($useStepper) {
 	$result = $result . "  service = Stepper { }\n\n";
     }
 
     $result = $result . "  service = MessageLogger {\n";
-    $result = $result . "    untracked vstring destinations = { \"cout\" }\n";
+    $result = $result . "    untracked vstring destinations = { \"cout\", \"cerr\" }\n";
     $result = $result . "    untracked PSet    cout         = " .
+	                "{ untracked string threshold = \"WARNING\" }\n";
+    $result = $result . "    untracked PSet    cerr         = " .
 	                "{ untracked string threshold = \"WARNING\" }\n";
     $result = $result . "    untracked PSet    log4cplus    = " .
 	                "{ untracked string threshold = \"WARNING\" }\n";
@@ -657,18 +663,34 @@ sub makeCfgFuPython
     $result = $result . "    evtsPerLS           = cms.untracked.uint32(100)\n";
     $result = $result . "    )\n\n";
     
-    $result = $result . "process.DQMStore = cms.Service (\"DQMStore\") \n\n";
+#    $result = $result . "process.DQMStore = cms.Service (\"DQMStore\") \n\n";
     if ($useStepper) {
 	$result = $result . "process.Stepper = cms.Service (\"Stepper\") \n\n";
     }
     $result = $result . "process.MessageLogger = cms.Service (\"MessageLogger\",\n";
-    $result = $result . "    destinations = cms.untracked.vstring(\'cout\'),\n";
+    $result = $result . "    destinations = cms.untracked.vstring(\'cout\', \'log4cplus\', \'cerr\'),\n";
     $result = $result . "    cout = cms.untracked.PSet (\n" .
-	                "    threshold = cms.untracked.string(\'WARNING\')\n" .
+			"    optionalPSet = cms.untracked.bool(True),\n" .
+	                "    threshold = cms.untracked.string(\'WARNING\'),\n" .
+			"    FwkReport = cms.untracked.PSet(\n" .
+			"        optionalPSet = cms.untracked.bool(False),\n" .
+			"        reportEvery = cms.untracked.int32(10000000),\n" .
+			"        limit = cms.untracked.int32(1)\n" .
+			"        ),\n" .
+			"    ),\n";
+    $result = $result . "    cerr = cms.untracked.PSet (\n" .
+			"    optionalPSet = cms.untracked.bool(True),\n" .
+	                "    threshold = cms.untracked.string(\'WARNING\'),\n" .
+			"    FwkReport = cms.untracked.PSet(\n" .
+			"        optionalPSet = cms.untracked.bool(False),\n" .
+			"        reportEvery = cms.untracked.int32(10000000),\n" .
+			"        limit = cms.untracked.int32(1)\n" .
+			"        ),\n" .
 			"    ),\n";
     $result = $result . "    log4cplus = cms.untracked.PSet(\n" .
 	                "    threshold = cms.untracked.string(\'WARNING\')\n" .
-                        "    )\n";
+                        "    ),\n" .
+			"   categories = cms.untracked.vstring('FwkReport')\n";
     $result = $result . "   )\n\n";
 
     $result = $result . "process.PrescaleService = cms.Service(\"PrescaleService\",\n";
@@ -1047,6 +1069,23 @@ sub makeCtlDestroy
 	"configure enable halt stop gennums.txt summaryCatalog.txt test.root`;\n\n";
     $result = $result . "print \"FUShmCleanUp_t ...\\n\";\n\n";
     $result = $result . "`FUShmCleanUp_t`;\n\n";
+    $result = $result . "print \"Cleanup message queues ...\\n\";\n\n";
+    $result = $result . "`ipcrm -Q 0x89`;\n\n";
+    $result = $result . "`ipcrm -Q 0x8a`;\n\n";
+    $result = $result . "`ipcrm -Q 0x8b`;\n\n";
+    $result = $result . "`ipcrm -Q 0x8c`;\n\n";
+    $result = $result . "`ipcrm -Q 0x8d`;\n\n";
+    $result = $result . "`ipcrm -Q 0x8e`;\n\n";
+    $result = $result . "`ipcrm -Q 0x8f`;\n\n";
+    $result = $result . "`ipcrm -Q 0x90`;\n\n";
+    $result = $result . "`ipcrm -Q 0x151`;\n\n";
+    $result = $result . "`ipcrm -Q 0x152`;\n\n";
+    $result = $result . "`ipcrm -Q 0x153`;\n\n";
+    $result = $result . "`ipcrm -Q 0x154`;\n\n";
+    $result = $result . "`ipcrm -Q 0x155`;\n\n";
+    $result = $result . "`ipcrm -Q 0x156`;\n\n";
+    $result = $result . "`ipcrm -Q 0x157`;\n\n";
+    $result = $result . "`ipcrm -Q 0x158`;\n\n";
     $result = $result . "print \"XDAQ session destroyed!\\n\";\n\n";
     $result = $result . "`rm destroy`;\n";
     
