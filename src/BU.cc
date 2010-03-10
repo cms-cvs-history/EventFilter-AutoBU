@@ -136,10 +136,6 @@ BU::BU(xdaq::ApplicationStub *s)
   xgi::bind(this,&evf::BU::customWebPage,"customWebPage");
   
   
-  // determine valid fed ids
-  for (unsigned int i=0;i<(unsigned int)FEDNumbering::lastFEDId()+1;i++)
-    if (FEDNumbering::inRangeNoGT(i)) validFedIds_.push_back(i);
-  
   // export parameters to info space(s)
   exportParameters();
 
@@ -199,6 +195,16 @@ bool BU::enabling(toolbox::task::WorkLoop* wl)
   isHalting_=false;
   try {
     LOG4CPLUS_INFO(log_,"Start enabling ...");
+    // determine valid fed ids (assumes Playback EP is already configured hence PBRDP::instance 
+    // not null in case we are playing back)
+    if (0!=PlaybackRawDataProvider::instance()) {
+      for (unsigned int i=0;i<(unsigned int)FEDNumbering::MAXFEDID+1;i++)
+	if (FEDNumbering::inRange(i)) validFedIds_.push_back(i);
+    }
+    else{
+      for (unsigned int i=0;i<(unsigned int)FEDNumbering::MAXFEDID+1;i++)
+	if (FEDNumbering::inRangeNoGT(i)) validFedIds_.push_back(i);
+    }
     if (!isBuilding_) startBuildingWorkLoop();
     if (!isSending_)  startSendingWorkLoop();
     LOG4CPLUS_INFO(log_,"Finished enabling!");
@@ -741,7 +747,7 @@ bool BU::generateEvent(BUEvent* evt)
       unsigned int   fedId  =validFedIds_[i];
       unsigned int   fedSize=event->FEDData(fedId).size();
       unsigned char* fedAddr=event->FEDData(fedId).data();
-      if (overwriteEvtId_.value_) {
+      if (overwriteEvtId_.value_ && fedAddr != 0) {
 	fedh_t *fedHeader=(fedh_t*)fedAddr;
 	fedHeader->eventid=(fedHeader->eventid&0xFF000000)+(evtNumber&0x00FFFFFF);
       }
@@ -758,7 +764,7 @@ bool BU::generateEvent(BUEvent* evt)
       unsigned int fedId(validFedIds_[i]);
       unsigned int fedSize(fedSizeMean_);
       if (!useFixedFedSize_) {
-	double logFedSize=RandGauss::shoot(gaussianMean_,gaussianWidth_);
+	double logFedSize=CLHEP::RandGauss::shoot(gaussianMean_,gaussianWidth_);
 	fedSize=(unsigned int)(std::exp(logFedSize));
 	if (fedSize<fedSizeMin)  fedSize=fedSizeMin;
 	if (fedSize>fedSizeMax_) fedSize=fedSizeMax_;
@@ -1093,8 +1099,8 @@ void BU::dumpFrame(unsigned char* data,unsigned int len)
     }
     c+=8;
     
-    printf ("%4d: %s%s ||  %s%s  %x\n",
-	    c-8, left1, left2, right1, right2, (int)&data[c-8]);
+    printf ("%4d: %s%s ||  %s%s  %p\n",
+	    c-8, left1, left2, right1, right2, &data[c-8]);
   }
   
   fflush(stdout);	
