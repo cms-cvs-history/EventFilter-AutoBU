@@ -33,10 +33,18 @@ my $forkProcesses = 0;
 my $PBfile;
 my $EPcfg = "";
 my $SMcfg = "";
+my $DBcfg = "";
+my $PBcfg = "";
+my $emulateLS = 1000;
+my $replay = "false";
 
 # hostname, default
-my $hostname = $ENV{"HOST"};
+my $hostname = `hostname`;
+chop($hostname);
 my $user     = $ENV{"USER"};
+
+# shell parameters
+my $nice     = "";
 
 # set variables
 my $BUport = 40000;
@@ -69,39 +77,79 @@ my $EPlibname = "libEventFilterProcessor.so";
 my $SMlibname = "libEventFilterStorageManager.so";
 my $PTlibname = "libptatcp.so";
 my $PTTlibname = "libpttcp.so";
-
+my $onlineConverterCmd = "";
 my $i2oprotocol = "atcp";
 
 my $SMperl = 
     $ENV{"CMSSW_RELEASE_BASE"} .
     "/src/EventFilter/StorageManager/scripts/perl";
+my $ConfDBperl = 
+    $ENV{"CMSSW_RELEASE_BASE"} .
+    "/src/EventFilter/AutoBU/scripts";
+if (!-e "$ConfDBperl/onlineConverter"){
+    print "WARNING: ConfDB direct access not available from $ConfDBperl\n\n";
+    $ConfDBperl = 
+    $ENV{"CMSSW_BASE"} .
+    "/src/EventFilter/AutoBU/scripts";
+    print "WARNING: Using $ConfDBperl instead\n\n";
+}
 my $SMout = "/tmp/$user/sm";
 
 
 my $pwd = `pwd`; chomp $pwd;
+my $usage =
+    "USAGE:\initialize - run FilterFarm without RunControl          \n\n" .
+    "\t-help                (print this blurb)\n" .
+    "\t-host                (host to run on             [default: current host ])\n" .
+    "\t-nice                (be nice to other users     [default: not nice     ])\n" .
+    "\t-cfgEP <yourcfg.py>  (use yourcfg.py as HLT menu [default use dummy cfg ])\n" .
+    "\t-cfgSM <yourcfg.py>  (use yourcfg.py as SM conf  [default use dummy cfg ])\n" .
+    "\t-cfgDB <fullpath>    (use key fullpath from db   [default use dummy cfg ])\n" .
+    "\t-playback <file>     (playback file <file>       [default: dummy data   ])\n" .
+    "\t-replay              (loop on playback input     [default: single pass  ])\n" .
+    "\t-fork <n>            (fork n EP processes        [default: no fork      ])\n" .
+    "\t-emulateLS <n>       (emulate LS every n events  [default: LS from data ])\n" .
+    "\t-runNumber <n>       (assign run number n        [default: 10           ])\n\n";
 
+die $usage if($ARGV[0] eq "-help");
 
 #
 # interpret command line
 #
 foreach $param (@ARGV) {
-    if    ($hostname eq "fillme")    { $hostname=$param; }
-    elsif ($param    eq "-host")     { $hostname="fillme"; }
-    elsif ($EPcfg    eq "fillme")    { $EPcfg   =$param; }
-    elsif ($param    eq "-cfgEP")    { $EPcfg   ="fillme"; }
-    elsif ($PBfile   eq "fillme")    { $PBfile  =$param; }
-    elsif ($param    eq "-playback") { $doPB=1;$PBfile="fillme"; }
+    if    ($hostname eq "fillme")    { $hostname=$param;  }
+    elsif ($param    eq "-host")     { $hostname="fillme";}
+    elsif ($param    eq "-nice")     { $nice="nice -n 15";}
+    elsif ($EPcfg    eq "fillme")    { $EPcfg   =$param;  }
+    elsif ($SMcfg    eq "fillme")    { $SMcfg   =$param;  }
+    elsif ($param    eq "-cfgEP")    { $EPcfg   ="fillme";}
+    elsif ($param    eq "-cfgSM")    { $doSM=1; $SMcfg   ="fillme";}
+    elsif ($param    eq "-cfgDB")    { $doSM=1; $DBcfg   ="fillme";}
+    elsif ($DBcfg    eq "fillme")    { $DBcfg   =$param;  }
+    elsif ($PBfile   eq "fillme")    { $PBfile  =$param;  }
+    elsif ($param    eq "-playback") { $doPB=1;$PBfile="fillme";$emulateLS=0 }
     elsif ($doEP     == -1)          { $doEP    =$param; }
-    elsif ($param    eq "-nEP")      { $doEP    =    -1; }
+    elsif ($param    eq "-noEP")     { $doEP    =    -1; }
     elsif ($param    eq "-drop")     { $doEP=0;$doSM=0;$doDQM=0;}
     elsif ($param    eq "-noSM")     { $doSM=0; }
     elsif ($param    eq "-debug")    { $useStepper=1; }
     elsif ($param    eq "-tcp")      { $useAtcp=0; }
     elsif ($param    eq "-noDQM")    { $doDQM=0; }
     elsif ($param    eq "-cfg")      { $doPyCfg=0; }
+    elsif ($param    eq "-replay")   { $replay="true"; }
     elsif ($param    eq "-fork")     { $forkProcesses="fillme"; }
     elsif ($forkProcesses    eq "fillme")    { $forkProcesses   =$param; }
+    elsif ($param    eq "-emulateLS")        { $emulateLS="fillme"; }
+    elsif ($emulateLS    eq "fillme")    { $emulateLS   =$param; }
+    elsif ($param    eq "-runNumber")        { $runNumber="fillme"; }
+    elsif ($runNumber    eq "fillme")    { $runNumber   =$param; }
     else { die ("Unknown parameter $param!\n"); }
+}
+
+if($DBcfg ne ""){
+    $onlineConverterCmd = "$ConfDBperl/onlineConverter";
+    print "NOTE: Using $onlineConverterCmd\n;"
+#    if (!-e "$onlineConverterCmd") { die "ERROR: no access to confDB OnlineConverter at $ConfDBperl";}
 }
 
 print "hostname = $hostname\n";
@@ -132,6 +180,15 @@ print "make directories ...\n";
 # make cfg files
 #
 print "make cfg files ...\n";
+
+if ($DBcfg) {
+    print "NOTE: retrieving HLT menu from DB\n\n";  
+#    if(!-e "$ConfDBperl/onlineConverter") {die "DB retrieval of HLT menu not available from $ConfDBperl\n";}
+    system("$onlineConverterCmd -d cms_rcms.cern.ch -h cmsonr1-v.cms -u CMS_HLT_R -c $DBcfg");
+    $EPcfg = "./EP.py";
+    $SMcfg = "./SM.py";
+}
+
 
 if ($EPcfg eq "") {
     if ($doPyCfg){
@@ -211,20 +268,24 @@ my @apps = ($BUappname,$BUlocalid,0,
 if ($doSM) { push (@apps,$SMappname); push (@apps,$SMlocalid); push (@apps,0); }
 
 my @BUproperties = ("runNumber","unsignedInt",$runNumber,
-		    "replay","boolean","false",
-		    "queueSize","unsignedInt","32",
-		    "crc","boolean","true",
-		    "overwriteEvtId","boolean","false",
+		    "replay","boolean",$replay,
+		    "queueSize","unsignedInt","256",
+		    "fedSizeMean","unsignedInt","16",
+		    "crc","boolean","false",
+		    "useFixedFedSize","boolean","true",
+		    "overwriteEvtId","boolean","true",
 		    "eventBufferSize","unsignedInt","0x400000");
 
     
-my @PBproperties = ("parameterSet","string","file:$pwd/cfg/playback.cfg",
-		    "hasSharedMemory","boolean","false",
-		    "hasPrescaleService","boolean","false");
+my @PBproperties = ("parameterSet",      "string","file:$PBcfg",
+		    "hasSharedMemory",   "boolean","false",
+		    "hasPrescaleService","boolean","false",
+		    "isRunNumberSetter", "boolean","false");
+
 
 my @RBproperties = ("runNumber",   "unsignedInt",$runNumber,
 		    "buClassName", "string",     $BUappname,
-		    "doCrcCheck",  "unsignedInt","1",
+		    "doCrcCheck",  "unsignedInt","0",
 		    "processKillerEnabled","boolean","false",
 		    "monSleepSec", "unsignedInt","5",
 		    "nbRawCells",  "unsignedInt","16",
@@ -243,13 +304,13 @@ my @EPproperties = ("parameterSet",  "string",      "file:$EPcfg",
 
 if (!$doSM) { push (@EPproperties,"outputEnabled","boolean","false"); }
 
-my @SMproperties = ("STparameterSet",   "string",     "file:$SMcfg",
-		    "runNumber",        "unsignedInt",$runNumber,
-		    "filePath",         "string",     "$SMout",
-		    "fileCatalog",      "string",     "summaryCatalog.txt",
-		    "setupLabel",       "string",     "test");
-
-
+my @SMproperties = ("STparameterSet",          "string",     "file:$SMcfg",
+		    "runNumber",               "unsignedInt",$runNumber,
+		    "filePath",                "string",     "$SMout",
+		    "fileCatalog",             "string",     "summaryCatalog.txt",
+		    "setupLabel",              "string",     "test",
+		    "lumiSectionTimeOut",      "double",     "1",
+		    "fileClosingTestInterval", "integer",    "1");
 open (XML,">./xml/evf.xml") or die ("Can't open file: $!\n");
 print XML makeXmlHeader();
 print XML makeXmlPartitionHeader();
@@ -393,6 +454,11 @@ if ($doEP) {
 	print CTL makeCtlCommand("Enable",$EPappname,$appabrev,$hostname,$port,0);
     }
 }
+
+if ($doTrigger) {
+print CTL makeCtlCommand("Enable",$EVMappname,"EVM0",$hostname,$EVMport,1);
+print CTL makeCtlCommand("Enable",$Triggerappname,"AT",$hostname,$Triggerport,1);
+}
 close (CTL);
 `chmod +x enable`;
 
@@ -437,31 +503,38 @@ if ($doSM) {
 close (CTL);
 `chmod +x halt`;
 
-# destroy
-open (CTL,">destroy") or die ("Can't open file: $!\n");
-print CTL makeCtlDestroy();
-close (CTL);
-`chmod +x destroy`;
-
-
 #
 # start processes
 #
 
 print "\nstart xdaq.exe on $hostname:$BUport\n";
-`nice -n 15 xdaq.exe -h $hostname -p $BUport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$BUport.log &`;
+`$nice xdaq.exe -h $hostname -p $BUport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$BUport.log &`;
 
 if ($doSM) {
     print "\nstart xdaq.exe on $hostname:$SMport\n";
-    `nice -n 15 xdaq.exe -h $hostname -p $SMport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$SMport.log &`;
+     `$nice xdaq.exe -h $hostname -p $SMport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$SMport.log &`;
+}
+
+if ($doTrigger) {
+    print "\nstart xdaq.exe on $hostname:$Triggerport\n";
+    `$nice xdaq.exe -h $hostname -p $Triggerport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$Triggerport.log &`;
+    print "\nstart xdaq.exe on $hostname:$EVMport\n";
+    `$nice xdaq.exe -h $hostname -p $EVMport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$EVMport.log &`;
 }
 
 for ($i=0;$i<$doEP;$i++) {
     $port = $EPport + $i;
     print "\nstart xdaq.exe on $hostname:$port\n";
-    `nice -n 15 xdaq.exe -h $hostname -p $port -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$port.log &`;
+     `$nice xdaq.exe -h $hostname -p $port -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$port.log &`;
 }
 
+@proc = `pgrep -u $user xdaq.exe`;
+
+# destroy
+open (CTL,">destroy") or die ("Can't open file: $!\n");
+print CTL makeCtlDestroy(@proc);
+close (CTL);
+`chmod +x destroy`;
 
 ################################################################################
 ################################################################################
@@ -541,7 +614,7 @@ sub makeCfgFu
     $result = $result . "  source = DaqSource\n";
     $result = $result . "  {\n";
     $result = $result . "    untracked string          readerPluginName    = \"FUShmReader\"\n";
-    $result = $result . "    untracked uint32          evtsPerLS           = 100\n";
+    $result = $result . "    untracked uint32          evtsPerLS           = $emulateLS\n";
     $result = $result . "  }\n\n";
     $result = $result . "  // paths\n";
     $result = $result . "  path p0 = { errorInjector }\n";
@@ -660,7 +733,7 @@ sub makeCfgFuPython
 
     $result = $result . "process.source = cms.Source(\"DaqSource\",\n";
     $result = $result . "    readerPluginName    = cms.untracked.string(\'FUShmReader\'),\n";
-    $result = $result . "    evtsPerLS           = cms.untracked.uint32(100)\n";
+    $result = $result . "    evtsPerLS           = cms.untracked.uint32($emulateLS)\n";
     $result = $result . "    )\n\n";
     
 #    $result = $result . "process.DQMStore = cms.Service (\"DQMStore\") \n\n";
@@ -1055,37 +1128,30 @@ sub makeXmlPartitionTrailer
 
 
 ################################################################################
-sub makeCtlDestroy
+sub makeCtlDestroy()
 {
     my $result = "";
 
-    my $cmd = "killall xdaq.exe";
-
     $result = $result . "#!/usr/bin/perl\n\n";
-    $result = $result . "print \"$cmd ...\\n\";\n\n";
-    $result = $result . "`$cmd`;\n\n";
+    foreach $x (@proc) {
+	chop($x);
+	my $cmd = "kill -9 $x";
+	$result = $result . "print \"$cmd ...\\n\";\n\n";
+	$result = $result . "`$cmd`;\n\n";
+    }
     $result = $result . "print \"remove files and dirs ...\n\";\n\n";
     $result = $result . "`rm -rf cfg/ soap/ xml/ flash/ log/ $SMout " .
-	"configure enable halt stop gennums.txt summaryCatalog.txt test.root`;\n\n";
+	"configure enable halt stop gennums.txt summaryCatalog.txt test.root log4cplus.log`;\n\n";
     $result = $result . "print \"FUShmCleanUp_t ...\\n\";\n\n";
     $result = $result . "`FUShmCleanUp_t`;\n\n";
     $result = $result . "print \"Cleanup message queues ...\\n\";\n\n";
-    $result = $result . "`ipcrm -Q 0x89`;\n\n";
-    $result = $result . "`ipcrm -Q 0x8a`;\n\n";
-    $result = $result . "`ipcrm -Q 0x8b`;\n\n";
-    $result = $result . "`ipcrm -Q 0x8c`;\n\n";
-    $result = $result . "`ipcrm -Q 0x8d`;\n\n";
-    $result = $result . "`ipcrm -Q 0x8e`;\n\n";
-    $result = $result . "`ipcrm -Q 0x8f`;\n\n";
-    $result = $result . "`ipcrm -Q 0x90`;\n\n";
-    $result = $result . "`ipcrm -Q 0x151`;\n\n";
-    $result = $result . "`ipcrm -Q 0x152`;\n\n";
-    $result = $result . "`ipcrm -Q 0x153`;\n\n";
-    $result = $result . "`ipcrm -Q 0x154`;\n\n";
-    $result = $result . "`ipcrm -Q 0x155`;\n\n";
-    $result = $result . "`ipcrm -Q 0x156`;\n\n";
-    $result = $result . "`ipcrm -Q 0x157`;\n\n";
-    $result = $result . "`ipcrm -Q 0x158`;\n\n";
+    $result = $result . "`ipcrm -Q 0x00000219`;\n";
+    foreach $i (0 .. $forkProcesses-1){
+	$qk1 = 0x00000151 + $i;
+	$qk2 = 0x00000089 + $i;
+	$result = $result . "`ipcrm -Q $qk1`;\n";
+	$result = $result . "`ipcrm -Q $qk2`;\n";
+    }	
     $result = $result . "print \"XDAQ session destroyed!\\n\";\n\n";
     $result = $result . "`rm destroy`;\n";
     
