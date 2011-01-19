@@ -25,6 +25,7 @@ my $doPB  = 0;
 my $doEP  = 1;
 my $doPyCfg  = 1;
 my $doSM  = 1;
+my $doID = 1;
 my $doDQM = 0;
 my $useStepper = 0;
 my $useAtcp = 1;
@@ -38,6 +39,10 @@ my $PBcfg = "";
 my $emulateLS = 1000;
 my $replay = "false";
 
+# execution parameters
+my $egAction = -1;
+my $egQualif =  0;
+
 # hostname, default
 my $hostname = `hostname`;
 chop($hostname);
@@ -50,10 +55,12 @@ my $nice     = "";
 my $BUport = 40000;
 my $SMport = 40001;
 my $EPport = 40002;
+my $IDport = 40003;
 
 my $BUappname = "evf::BU";
 my $RBappname = "evf::FUResourceBroker";
 my $EPappname = "evf::FUEventProcessor";
+my $IDappname = "evf::iDie";
 my $SMappname = "StorageManager";
 my $PTappname = "pt::atcp::PeerTransportATCP";
 my $PTTappname = "pt::tcp::PeerTransportTCP";
@@ -64,17 +71,20 @@ my $RBlocalid=26;
 my $EPlocalid=27;
 my $SMlocalid=44;
 my $PTlocalid=47;
+my $IDlocalid=48;
 
 my $BUlibpath = getLibraryPath("EventFilter/AutoBU");
 my $RBlibpath = getLibraryPath("EventFilter/ResourceBroker");
 my $EPlibpath = getLibraryPath("EventFilter/Processor");
 my $SMlibpath = getLibraryPath("EventFilter/StorageManager");
 my $PTlibpath = $ENV{"XDAQ_ROOT"} . "/lib";
+my $IDlibpath = getLibraryPath("EventFilter/Goodies");
 
 my $BUlibname = "libEventFilterAutoBU.so";
 my $RBlibname = "libEventFilterResourceBroker.so";
 my $EPlibname = "libEventFilterProcessor.so";
 my $SMlibname = "libEventFilterStorageManager.so";
+my $IDlibname = "libEventFilterGoodies.so";
 my $PTlibname = "libptatcp.so";
 my $PTTlibname = "libpttcp.so";
 my $onlineConverterCmd = "";
@@ -105,6 +115,9 @@ my $usage =
     "\t-cfgEP <yourcfg.py>  (use yourcfg.py as HLT menu [default use dummy cfg ])\n" .
     "\t-cfgSM <yourcfg.py>  (use yourcfg.py as SM conf  [default use dummy cfg ])\n" .
     "\t-cfgDB <fullpath>    (use key fullpath from db   [default use dummy cfg ])\n" .
+    "\t-noiDie              (do not instantiate iDie    [default iDie present  ])\n" .
+    "\t-egAction <int>      (set up eg to perform action[default: -1, no action])\n" .
+    "\t-egQualif <uint>     (value of eg action qualif  [default: 0            ])\n" .
     "\t-playback <file>     (playback file <file>       [default: dummy data   ])\n" .
     "\t-replay              (loop on playback input     [default: single pass  ])\n" .
     "\t-fork <n>            (fork n EP processes        [default: no fork      ])\n" .
@@ -135,10 +148,15 @@ foreach $param (@ARGV) {
     elsif ($param    eq "-debug")    { $useStepper=1; }
     elsif ($param    eq "-tcp")      { $useAtcp=0; }
     elsif ($param    eq "-noDQM")    { $doDQM=0; }
+    elsif ($param    eq "-noiDie")   { $doID=0; }
     elsif ($param    eq "-cfg")      { $doPyCfg=0; }
     elsif ($param    eq "-replay")   { $replay="true"; }
     elsif ($param    eq "-fork")     { $forkProcesses="fillme"; }
     elsif ($forkProcesses    eq "fillme")    { $forkProcesses   =$param; }
+    elsif ($param    eq "-egAction") { $egAction ="fillme"; }
+    elsif ($egAction     eq "fillme")    { $egAction   =$param; }
+    elsif ($param    eq "-egQualif") { $egQualif ="fillme"; }
+    elsif ($egQualif     eq "fillme")    { $egQualif   =$param; }
     elsif ($param    eq "-emulateLS")        { $emulateLS="fillme"; }
     elsif ($emulateLS    eq "fillme")    { $emulateLS   =$param; }
     elsif ($param    eq "-runNumber")        { $runNumber="fillme"; }
@@ -295,11 +313,12 @@ my @RBproperties = ("runNumber",   "unsignedInt",$runNumber,
 		    "recoCellSize","unsignedInt","0x400000",
                     "dqmCellSize", "unsignedInt","0x100000");
 
-if (!$doEP) { push (@RPproperties,"doDropEvents","boolean","true"); }
+if (!$doEP) { push (@RBproperties,"doDropEvents","boolean","true"); }
 
 my @EPproperties = ("parameterSet",  "string",      "file:$EPcfg",
 		    "runNumber",     "unsignedInt", $runNumber,
-		    "nbSubProcesses","unsignedInt", $forkProcesses);
+		    "nbSubProcesses","unsignedInt", $forkProcesses,
+		    "iDieUrl",       "string",      "http://$hostname:$IDport/urn:xdaq-application:lid=$IDlocalid");
                       
 
 if (!$doSM) { push (@EPproperties,"outputEnabled","boolean","false"); }
@@ -358,6 +377,15 @@ if ($doSM) {
     print XML makeXmlAppTrailer(1,$PTlibpath,$PTlibname);
     print XML makeXmlContextTrailer();
 }
+
+# Id context
+if ($doID) {
+    print XML makeXmlContextHeader("ID",$hostname,$IDport);
+    print XML makeXmlAppHeader(1,$IDappname,$IDlocalid);
+    print XML makeXmlAppTrailer(1,$IDlibpath,$IDlibname);
+    print XML makeXmlContextTrailer();
+}
+
 
 print XML makeXmlPartitionTrailer();
 close (XML);
@@ -513,6 +541,11 @@ print "\nstart xdaq.exe on $hostname:$BUport\n";
 if ($doSM) {
     print "\nstart xdaq.exe on $hostname:$SMport\n";
      `$nice xdaq.exe -h $hostname -p $SMport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$SMport.log &`;
+}
+
+if ($doID) {
+    print "\nstart xdaq.exe on $hostname:$IDport\n";
+     `$nice xdaq.exe -h $hostname -p $IDport -e xml/profile.xml -c xml/evf.xml >& log/$hostname.$IDport.log &`;
 }
 
 if ($doTrigger) {
@@ -698,7 +731,6 @@ sub makeCfgFu
     $result = $result . "  module out = ShmStreamConsumer\n";
     $result = $result . "  {\n";
     $result = $result . "    untracked int32 max_event_size       = 7000000\n";
-    $result = $result . "    int32           max_queue_depth      =       5\n";
     $result = $result . "    untracked bool  use_compression      =    true\n";
     $result = $result . "    untracked int32 compression_level    =       1\n";
     $result = $result . "  }\n\n";
@@ -768,8 +800,18 @@ sub makeCfgFuPython
 
     $result = $result . "process.PrescaleService = cms.Service(\"PrescaleService\",\n";
     $result = $result . "    lvl1Labels = cms.vstring(\'DEFAULT\'),\n";
-    $result = $result . "    prescaleTable = cms.VPSet()\n";
-    $result = $result . "    )\n\n";
+    $result = $result . "    prescaleTable = cms.VPSet(\n";
+    $result = $result . "      cms.PSet(  pathName = cms.string(\"p1\"),\n";
+    $result = $result . "       prescales = cms.vuint32(100)\n";
+    $result = $result . "      ),\n";
+    $result = $result . "      cms.PSet(  pathName = cms.string(\"p2\"),\n";
+    $result = $result . "       prescales = cms.vuint32(1000)\n";
+    $result = $result . "      ),\n";
+    $result = $result . "      cms.PSet(  pathName = cms.string(\"p3\"),\n";
+    $result = $result . "       prescales = cms.vuint32(100)\n";
+    $result = $result . "      )\n";
+    $result = $result . "    )\n";
+    $result = $result . ")\n\n";
 
     $result = $result . "process.FUShmDQMOutputService = cms.Service(\"FUShmDQMOutputService\",\n";
     $result = $result . "    initialMessageBufferSize=cms.untracked.int32(1000000),\n";
@@ -802,29 +844,55 @@ sub makeCfgFuPython
     $result = $result . "process.a3 = cms.EDAnalyzer(\"StreamThingAnalyzer\",\n";
     $result = $result . "    product_to_get = cms.string(\'m3\')\n";
     $result = $result . "    )\n\n";
+    $result = $result . "process.ps1 = cms.EDFilter(\"HLTPrescaler\",\n";
+    $result = $result . "         L1GtReadoutRecordTag = cms.InputTag(\"hltGtDigis\")\n";
+    $result = $result . "    )\n\n";
+    $result = $result . "process.ps2 = cms.EDFilter(\"HLTPrescaler\",\n";
+    $result = $result . "         L1GtReadoutRecordTag = cms.InputTag(\"hltGtDigis\")\n";
+    $result = $result . "    )\n\n";
+    $result = $result . "process.ps3 = cms.EDFilter(\"HLTPrescaler\",\n";
+    $result = $result . "         L1GtReadoutRecordTag = cms.InputTag(\"hltGtDigis\")\n";
+    $result = $result . "    )\n\n";
 
-    $result = $result . "process.errorInjector = cms.EDAnalyzer(\"ExceptionGenerator\")\n\n";
+    $result = $result . "process.errorInjector = cms.EDAnalyzer(\"ExceptionGenerator\",\n";
+    $result = $result . "         defaultAction       = cms.untracked.int32($egAction),\n";
+    $result = $result . "         defaultQualifier    = cms.untracked.int32($egQualif)\n";
+    $result = $result . "    )\n\n";
 
     if ($doDQM) {
 	$result = $result . "process.dqm = cms.EDAnalyzer(\"SMDQMSourceExample\")\n\n";
     }
     
-    $result = $result . "process.out = cms.OutputModule(\"ShmStreamConsumer\",\n";
+    $result = $result . "process.out1 = cms.OutputModule(\"ShmStreamConsumer\",\n";
+    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents = cms.vstring( 'p1')),\n";
     $result = $result . "    max_event_size       = cms.untracked.int32(7000000),\n";
-    $result = $result . "    max_queue_depth      = cms.int32(5),\n";
+    $result = $result . "    use_compression      = cms.untracked.bool(True),\n";
+    $result = $result . "    compression_level    = cms.untracked.int32(1)\n";
+    $result = $result . "    )\n\n";
+    $result = $result . "process.out2 = cms.OutputModule(\"ShmStreamConsumer\",\n";
+    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents = cms.vstring( 'p2')),\n";
+    $result = $result . "    max_event_size       = cms.untracked.int32(7000000),\n";
+    $result = $result . "    use_compression      = cms.untracked.bool(True),\n";
+    $result = $result . "    compression_level    = cms.untracked.int32(1)\n";
+    $result = $result . "    )\n\n";
+    $result = $result . "process.out3 = cms.OutputModule(\"ShmStreamConsumer\",\n";
+    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents = cms.vstring( 'p3')),\n";
+    $result = $result . "    max_event_size       = cms.untracked.int32(7000000),\n";
     $result = $result . "    use_compression      = cms.untracked.bool(True),\n";
     $result = $result . "    compression_level    = cms.untracked.int32(1)\n";
     $result = $result . "    )\n\n";
     $result = $result . "process.p0 = cms.Path(process.errorInjector)\n";
-    $result = $result . "process.p1 = cms.Path(process.m1*process.a1 )\n";
-    $result = $result . "process.p2 = cms.Path(process.m2*process.a2 )\n";
-    $result = $result . "process.p3 = cms.Path(process.m3*process.a3 )\n";
+    $result = $result . "process.p1 = cms.Path(process.ps1*process.m1*process.a1 )\n";
+    $result = $result . "process.p2 = cms.Path(process.ps2*process.m2*process.a2 )\n";
+    $result = $result . "process.p3 = cms.Path(process.ps3*process.m3*process.a3 )\n";
 
     if ($doDQM) {
 	$result = $result . "process.p4 = cms.Path( process.dqm )\n";
     }
 
-    $result = $result . "process.ep = cms.EndPath( process.out )\n\n";
+    $result = $result . "process.ep1 = cms.EndPath( process.out1 )\n\n";
+    $result = $result . "process.ep2 = cms.EndPath( process.out2 )\n\n";
+    $result = $result . "process.ep3 = cms.EndPath( process.out3 )\n\n";
     
     return $result;
 }
@@ -866,13 +934,30 @@ sub makeCfgSmPython
     $result = $result . "# source\n";
     $result = $result . "process.source = cms.Source(\"FragmentInput\")\n";
     $result = $result . "# endpath\n";
-    $result = $result . "process.out = cms.OutputModule( \"EventStreamFileWriter\",\n";
+    $result = $result . "process.out1 = cms.OutputModule( \"EventStreamFileWriter\",\n";
     $result = $result . "    streamLabel = cms.string(\"A\"),\n";
     $result = $result . "    maxSize = cms.int32(2048),\n";
-    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents=cms.vstring(\"*\"))\n";
+    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents=cms.vstring(\"*\")),\n";
+    $result = $result . "    SelectHLTOutput = cms.untracked.string(\"out3\"),\n";
+    $result = $result . "    fractionToDisk = cms.untracked.double( 0.1 )\n";
+    $result = $result . ")\n\n";
+    $result = $result . "process.out2 = cms.OutputModule( \"EventStreamFileWriter\",\n";
+    $result = $result . "    streamLabel = cms.string(\"B\"),\n";
+    $result = $result . "    maxSize = cms.int32(2048),\n";
+    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents=cms.vstring(\"*\")),\n";
+    $result = $result . "    SelectHLTOutput = cms.untracked.string(\"out1\"),\n";
+    $result = $result . "    fractionToDisk = cms.untracked.double( 0.0 )\n";
+
+    $result = $result . ")\n\n";
+    $result = $result . "process.out3 = cms.OutputModule( \"EventStreamFileWriter\",\n";
+    $result = $result . "    streamLabel = cms.string(\"C\"),\n";
+    $result = $result . "    maxSize = cms.int32(2048),\n";
+    $result = $result . "    SelectEvents = cms.untracked.PSet(SelectEvents=cms.vstring(\"*\")),\n";
+    $result = $result . "    SelectHLTOutput = cms.untracked.string(\"out2\"),\n";
+    $result = $result . "    fractionToDisk = cms.untracked.double( 0.0 )\n";
     $result = $result . ")\n\n";
 
-    $result = $result . "process.e1 = cms.EndPath( process.out )\n";
+    $result = $result . "process.e1 = cms.EndPath( process.out1+process.out2+process.out3 )\n";
     $result = $result . "# modules\n\n";
 
 }
