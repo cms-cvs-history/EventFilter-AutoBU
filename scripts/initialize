@@ -295,13 +295,10 @@ my @apps = ($BUappname,$BUlocalid,0,
 
 if ($doSM) { push (@apps,$SMappname); push (@apps,$SMlocalid); push (@apps,0); }
 
+
 my @BUproperties = ("runNumber","unsignedInt",$runNumber,
 		    "replay","boolean",$replay,
 		    "queueSize","unsignedInt","256",
-		    "fedSizeMean","unsignedInt","16",
-		    "crc","boolean","false",
-		    "useFixedFedSize","boolean","true",
-		    "overwriteEvtId","boolean","true",
 		    "eventBufferSize","unsignedInt","0x400000");
 
     

@@ -24,7 +24,7 @@
 
 
 BUMessageCutter::BUMessageCutter(xdata::UnsignedInteger32 msgBufferSize,
-		Logger* log, xdaq::ApplicationDescriptor* buAppDesc,
+		Logger log, xdaq::ApplicationDescriptor* buAppDesc,
 		xdaq::ApplicationDescriptor* fuAppDesc, toolbox::mem::Pool* i2oPool) :
 	msgBufferSize_(msgBufferSize), log_(log), buAppDesc_(buAppDesc),
 			fuAppDesc_(fuAppDesc), i2oPool_(i2oPool) {
@@ -37,7 +37,7 @@ toolbox::mem::Reference* BUMessageCutter::createMessageChainSimple(
 	unsigned int msgPayloadSize = msgBufferSize_ - msgHeaderSize;
 
 	if ((msgPayloadSize % 4) != 0)
-		LOG4CPLUS_ERROR(*log_, "Invalid Payload Size.");
+		LOG4CPLUS_ERROR(log_, "Invalid Payload Size.");
 
 	toolbox::mem::Reference *head = 0;
 	toolbox::mem::Reference *tail = 0;
@@ -73,7 +73,7 @@ toolbox::mem::Reference* BUMessageCutter::createMessageChainSimple(
 			// issue en error if frame size is greater than message size
 			if (sf->frameAt(i).size() > msgPayloadSize)
 				LOG4CPLUS_ERROR(
-						*log_,
+						log_,
 						"FED Frame: " << i << " from super fragment " << iSF
 								<< " of event " << evt->getEvtNumber()
 								<< " is too large for I2O transmission! Size = "
@@ -106,7 +106,7 @@ toolbox::mem::Reference* BUMessageCutter::createMessageChainSimple(
 				bufRef = toolbox::mem::getMemoryPoolFactory()->getFrame(
 						i2oPool_, msgBufferSize_);
 			} catch (xcept::Exception &e) {
-				LOG4CPLUS_FATAL(*log_, "xdaq::frameAlloc failed");
+				LOG4CPLUS_FATAL(log_, "xdaq::frameAlloc failed");
 			}
 
 			// I20 block/message fields fill
@@ -253,7 +253,7 @@ toolbox::mem::Reference* BUMessageCutter::createMessageChain(ABUEvent* evt,
 	unsigned int msgPayloadSize = msgBufferSize_ - msgHeaderSize;
 
 	if ((msgPayloadSize % 4) != 0)
-		LOG4CPLUS_ERROR(*log_, "Invalid Payload Size.");
+		LOG4CPLUS_ERROR(log_, "Invalid Payload Size.");
 
 	toolbox::mem::Reference *head = 0;
 	toolbox::mem::Reference *tail = 0;
@@ -312,7 +312,7 @@ toolbox::mem::Reference* BUMessageCutter::createMessageChain(ABUEvent* evt,
 				bufRef = toolbox::mem::getMemoryPoolFactory()->getFrame(
 						i2oPool_, msgBufferSize_);
 			} catch (xcept::Exception &e) {
-				LOG4CPLUS_FATAL(*log_, "xdaq::frameAlloc failed");
+				LOG4CPLUS_FATAL(log_, "xdaq::frameAlloc failed");
 			}
 
 			// Fill in the fields of the fragment block / message

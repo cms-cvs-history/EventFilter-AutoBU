@@ -29,7 +29,7 @@ my $SM = "http://$host:$SMPort/urn:xdaq-application:lid=$SMid/";
 
 
 sub is_BU_initialised {
- my $response = `curl -s $BU | grep stateName`;
+ my $response = `curl -s $BU | grep evf::BU`;
  if ($response =~ m/Halted/i) {
 	return 1;
  }
@@ -39,8 +39,8 @@ sub is_BU_initialised {
 }
 
 sub is_BU_ready {
- my $response = `curl -s $BU | grep stateName`;
- if ($response =~ m/Ready/i) {
+ my $response = `curl -s $BU | grep evf::BU`;
+ if ($response =~ m/Stopped/i) {
 	return 1;
  }
  else {

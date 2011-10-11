@@ -31,7 +31,7 @@ public:
 	 * and a pointer to the I2O memory pool.
 	 */
 			BUMessageCutter(xdata::UnsignedInteger32 msgBufferSize,
-					Logger* log, xdaq::ApplicationDescriptor* buAppDesc,
+					Logger log, xdaq::ApplicationDescriptor* buAppDesc,
 					xdaq::ApplicationDescriptor* fuAppDesc,
 					toolbox::mem::Pool* i2oPool);
 	/**
@@ -49,7 +49,7 @@ public:
 
 private:
 	xdata::UnsignedInteger32 msgBufferSize_;
-	Logger* log_;
+	Logger log_;
 	xdaq::ApplicationDescriptor* buAppDesc_;
 	xdaq::ApplicationDescriptor* fuAppDesc_;
 	toolbox::mem::Pool* i2oPool_;

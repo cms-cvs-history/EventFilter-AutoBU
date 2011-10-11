@@ -1,3 +1,6 @@
+2011-10-11  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
+	* boost::statechart used for new Auto BU
+
 2011-09-05  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
 	* new AUTO BU on branch
 
