@@ -4,6 +4,7 @@
  */
 
 #include "EventFilter/AutoBU/interface/BStateMachine.h"
+#include "EventFilter/AutoBU/interface/SharedResources.h"
 
 #include <iostream>
 
@@ -11,7 +12,20 @@ using std::string;
 using namespace evf;
 
 void Halting::do_entryActionWork() {
+	outermost_context().setExternallyVisibleState(stateName());
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify(stateName());
+}
+
+Halting::Halting(my_context c) :
+	my_base(c) {
+	safeEntryAction();
+}
+
+void Halting::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
+
+	//resources->stopExecution() = true;
 
 	// HALTING
 	try {
@@ -30,9 +44,6 @@ void Halting::do_entryActionWork() {
 		// reset average queue size counter
 		resources->avgTaskQueueSize() = 0;
 
-		// clear maxFedSize counter
-		resources->maxFedSizeGen() = 0;
-
 		LOG4CPLUS_INFO(resources->logger(), "Finished halting!");
 
 		EventPtr stMachEvent(new HaltDone());
@@ -43,11 +54,6 @@ void Halting::do_entryActionWork() {
 		EventPtr stMachEvent(new Fail());
 		resources->enqEvent(stMachEvent);
 	}
-}
-
-Halting::Halting(my_context c) :
-	my_base(c) {
-	safeEntryAction();
 }
 
 void Halting::do_exitActionWork() {

@@ -4,6 +4,7 @@
  */
 
 #include "EventFilter/AutoBU/interface/BStateMachine.h"
+#include "EventFilter/AutoBU/interface/SharedResources.h"
 
 #include <iostream>
 
@@ -16,7 +17,15 @@ Stopping::Stopping(my_context c) :
 }
 
 void Stopping::do_entryActionWork() {
+	outermost_context().setExternallyVisibleState(stateName());
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify(stateName());
+}
+
+void Stopping::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
+
+	//resources->stopExecution() = true;
 
 	// STOPPING
 	try {

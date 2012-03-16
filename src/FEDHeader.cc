@@ -63,7 +63,7 @@ void FEDHeader::set(unsigned char* header, int evt_ty, int lvl1_ID, int bx_ID,
 
 bool FEDHeader::check() {
 	// ...may report with finer detail
-	// TODO complete header check
+	// improve complete header check
 	bool result = true;
 	result &= ((theHeader_->eventid & FED_HCTRLID_MASK) == FED_HCTRLID);
 

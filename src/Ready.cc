@@ -15,6 +15,11 @@ Ready::Ready(my_context c) :
 }
 
 void Ready::do_entryActionWork() {
+	// notifications handled in sub-state Stopped
+	/*
+	outermost_context().setExternallyVisibleState(do_stateName());
+	outermost_context().rcmsStateChangeNotify(do_stateName());
+	*/
 }
 
 Ready::~Ready() {

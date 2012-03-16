@@ -11,6 +11,10 @@ using std::string;
 using namespace evf;
 
 void Halted::do_entryActionWork() {
+	outermost_context().setExternallyVisibleState(stateName());
+	outermost_context().setInternalStateName(stateName());
+	if (!outermost_context().firstTimeInHalted())
+		outermost_context().rcmsStateChangeNotify(stateName());
 }
 
 Halted::Halted(my_context c) :
@@ -19,6 +23,7 @@ Halted::Halted(my_context c) :
 }
 
 void Halted::do_exitActionWork() {
+	outermost_context().setFirstTimeInHaltedFalse();
 }
 
 Halted::~Halted() {

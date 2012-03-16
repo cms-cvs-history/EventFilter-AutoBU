@@ -16,6 +16,9 @@ Stopped::Stopped(my_context c) :
 }
 
 void Stopped::do_entryActionWork() {
+	outermost_context().setExternallyVisibleState("Ready");
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify("Ready");
 }
 
 Stopped::~Stopped() {

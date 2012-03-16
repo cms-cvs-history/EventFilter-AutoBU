@@ -4,32 +4,32 @@
  */
 
 #include "EventFilter/AutoBU/interface/BStateMachine.h"
-
+#include "EventFilter/AutoBU/interface/SharedResources.h"
 #include <iostream>
 
 using namespace evf;
 using std::string;
 
-//#define FORCE_I2O_BU
-
 void Configuring::do_entryActionWork() {
-	//outermost_context().setExternallyVisibleState("Configuring");
+	outermost_context().setExternallyVisibleState(stateName());
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify(stateName());
+}
 
+Configuring::Configuring(my_context c) :
+	my_base(c) {
+	safeEntryAction();
+}
+
+// state-dependent actions
+void Configuring::do_stateAction() const {
 	/*
 	 *  CONFIGURING
 	 */
-
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 
 	try {
 		LOG4CPLUS_INFO(resources->logger(), "Start configuring ...");
-
-		// BUFU
-		resources->setInterface(BUFUInterface::instance());
-#ifdef FORCE_I2O_BU
-		resources->setInterface(BUFUInterface::forceNewInstance());
-#endif
-		resources->interface()->registerBU(resources->bu(), resources->logger());
 
 		resources->reset();
 		LOG4CPLUS_INFO(resources->logger(), "Finished configuring!");
@@ -43,11 +43,6 @@ void Configuring::do_entryActionWork() {
 		EventPtr stMachEvent(new Fail());
 		resources->enqEvent(stMachEvent);
 	}
-}
-
-Configuring::Configuring(my_context c) :
-	my_base(c) {
-	safeEntryAction();
 }
 
 void Configuring::do_exitActionWork() {

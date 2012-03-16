@@ -8,11 +8,12 @@
 //							    Andrei Spataru <andrei.cristian.spataru@cern.ch>
 ////////////////////////////////////////////////////////////////////////////////
 
+//TODO replace do_stateName with stateName()
 
 #include "EventFilter/AutoBU/interface/BU.h"
 #include "EventFilter/AutoBU/interface/BUMessageCutter.h"
 #include "EventFilter/AutoBU/interface/SoapUtils.h"
-
+#include "EventFilter/Utilities/interface/IndependentWebGUI.h"
 #include "EventFilter/AutoBU/interface/ABUConfig.h"
 
 #include "xoap/SOAPEnvelope.h"
@@ -38,17 +39,19 @@ using namespace evf;
 //______________________________________________________________________________
 
 BU::BU(xdaq::ApplicationStub *s) :
-	xdaq::Application(s), resources_(new SharedResources()), gui_(0),
-			instance_(0), runNumber_(0), memUsedInMB_(0.0),
-			eventBufferSize_(0x400000),
+	xdaq::Application(s), resources_(new SharedResources()), instance_(0),
+			runNumber_(0), memUsedInMB_(0.0), eventBufferSize_(0x400000),
 			initialSFBuffer_(INITIAL_SUPERFRAGMENT_SIZE_BYTES) {
 
 	bindStateMachineCallbacks();
 
+	resources_->gui_ = new IndependentWebGUI(this);
+	resources_->gui_->setVersionString("Last modified: 22.02.2012");
+
 	initialiseSharedResources(resources_);
 
 	// create state machine with shared resources
-	fsm_.reset(new BStateMachine(resources_));
+	fsm_.reset(new BStateMachine(this, resources_));
 
 	// initialise state machine
 	fsm_->initiate();
@@ -75,13 +78,10 @@ BU::BU(xdaq::ApplicationStub *s) :
 
 	// web interface
 	xgi::bind(this, &evf::BU::webPageRequest, "Default");
+	resources_->gui_->setSmallAppIcon("/rubuilder/bu/images/bu32x32.gif");
+	resources_->gui_->setLargeAppIcon("/rubuilder/bu/images/bu64x64.gif");
 
-	gui_ = new WebGUI2(this, fsm_);
-
-	gui_->setSmallAppIcon("/rubuilder/bu/images/bu32x32.gif");
-	gui_->setLargeAppIcon("/rubuilder/bu/images/bu64x64.gif");
-
-	vector<toolbox::lang::Method*> methods = gui_->getMethods();
+	vector<toolbox::lang::Method*> methods = resources_->gui_->getMethods();
 	vector<toolbox::lang::Method*>::iterator it;
 	for (it = methods.begin(); it != methods.end(); ++it) {
 		if ((*it)->type() == "cgi") {
@@ -93,6 +93,8 @@ BU::BU(xdaq::ApplicationStub *s) :
 
 	// export parameters to info space(s)
 	exportParameters();
+
+	fsm_->findRcmsStateListener(this);
 
 }
 
@@ -120,7 +122,6 @@ void BU::initialiseSharedResources(SharedResourcesPtr res) {
 	res->taskQueueSize() = 0;
 	res->rtsQSize() = 0;
 	res->avgTaskQueueSize() = 0;
-	res->maxFedSizeGen() = 0;
 	res->nbEventsInBU() = 0;
 	res->nbEventsRequested() = 0;
 	res->nbEventsBuilt() = 0;
@@ -134,6 +135,8 @@ void BU::initialiseSharedResources(SharedResourcesPtr res) {
 	res->msgChainCreationMode() = "NORMAL";
 	res->msgBufferSize() = 32768;
 	res->fedSizeMax() = 65536;
+	res->fedSizeMean() = 16;
+	res->fedSizeWidth() = 1024;
 
 	// allocate i2o memory pool
 	string i2oPoolName = res->sourceId() + "_i2oPool";
@@ -171,13 +174,13 @@ void BU::bindStateMachineCallbacks() {
 xoap::MessageReference BU::handleFSMSoapMessage(xoap::MessageReference msg)
 		throw (xoap::exception::Exception) {
 
-	std::string errorMsg;
+	string errorMsg;
 	xoap::MessageReference returnMsg;
 
 	try {
 		errorMsg
 				= "Failed to extract FSM event and parameters from SOAP message: ";
-		std::string command = soaputils::extractParameters(msg, this);
+		string command = soaputils::extractParameters(msg, this);
 
 		errorMsg = "Failed to put a '" + command
 				+ "' state machine event into command queue: ";
@@ -193,8 +196,19 @@ xoap::MessageReference BU::handleFSMSoapMessage(xoap::MessageReference msg)
 
 		} else if (command == "Stop") {
 
-			EventPtr stMachEvent(new Stop());
-			resources_->enqEvent(stMachEvent);
+			// UPDATE: BU:stop = halt + configure
+			/*
+			 EventPtr stMachEvent(new Stop());
+			 resources_->enqEvent(stMachEvent);
+			 */
+			EventPtr halt(new Halt());
+			resources_->enqEvent(halt);
+
+			while (fsm_->getExternallyVisibleState().compare("Halted") != 0)
+				::sleep(1);
+
+			EventPtr configure(new Configure());
+			resources_->enqEvent(configure);
 
 		} else if (command == "Halt") {
 
@@ -210,8 +224,10 @@ xoap::MessageReference BU::handleFSMSoapMessage(xoap::MessageReference msg)
 		}
 
 		errorMsg = "Failed to create FSM SOAP reply message: ";
+		::usleep(50000);
 		returnMsg = soaputils::createFsmSoapResponseMsg(command,
-				fsm_->getCurrentStateName());
+				fsm_->getExternallyVisibleState());
+
 	} catch (xcept::Exception& e) {
 		string s = "Exception on FSM Callback!";
 		LOG4CPLUS_FATAL(resources_->logger(), s);
@@ -254,38 +270,9 @@ void BU::I2O_BU_DISCARD_Callback(toolbox::mem::Reference *bufRef) {
 
 //______________________________________________________________________________
 
-void BU::DIRECT_BU_ALLOCATE(const UIntVec_t& fuResourceIds,
-		xdaq::ApplicationDescriptor* fuAppDesc) {
-	try {
-		handleDirectAllocate(fuResourceIds, fuAppDesc);
-	} catch (xcept::Exception& e) {
-		string s = "Exception in DIRECT_BU_ALLOCATE: " + (string) e.what();
-		LOG4CPLUS_FATAL(resources_->logger(), s);
-		XCEPT_RETHROW(xcept::Exception, s, e);
-	} catch (...) {
-		LOG4CPLUS_FATAL(resources_->logger(), "Exception in DIRECT_BU_ALLOCATE");
-	}
-}
-
-//______________________________________________________________________________
-
-void BU::DIRECT_BU_DISCARD(UInt_t buResourceId) {
-	try {
-		handleDirectDiscard(buResourceId);
-	} catch (xcept::Exception& e) {
-		string s = "Exception in DIRECT_BU_DISCARD: " + (string) e.what();
-		LOG4CPLUS_FATAL(resources_->logger(), s);
-		XCEPT_RETHROW(xcept::Exception, s, e);
-	} catch (...) {
-		LOG4CPLUS_FATAL(resources_->logger(), "Exception in DIRECT_BU_DISCARD");
-	}
-}
-
-//______________________________________________________________________________
-
 void BU::actionPerformed(xdata::Event& e) {
 
-	gui_->monInfoSpace()->lock();
+	resources_->gui_->monInfoSpace()->lock();
 	if (e.type() == "urn:xdata-event:ItemGroupRetrieveEvent") {
 		if (0 != PlaybackRawDataProvider::instance())
 			resources_->mode() = "PLAYBACK";
@@ -298,7 +285,7 @@ void BU::actionPerformed(xdata::Event& e) {
 	} else if (e.type() == "ItemChangedEvent") {
 		string item = dynamic_cast<xdata::ItemChangedEvent&> (e).itemName();
 	}
-	gui_->monInfoSpace()->unlock();
+	resources_->gui_->monInfoSpace()->unlock();
 }
 
 //______________________________________________________________________________
@@ -308,7 +295,8 @@ void BU::webPageRequest(xgi::Input *in, xgi::Output *out)
 	string name = in->getenv("PATH_INFO");
 	if (name.empty())
 		name = "defaultWebPage";
-	static_cast<xgi::MethodSignature*> (gui_->getMethod(name))->invoke(in, out);
+	static_cast<xgi::MethodSignature*> (resources_->gui_->getMethod(name))->invoke(
+			in, out);
 }
 
 //______________________________________________________________________________
@@ -345,8 +333,8 @@ bool BU::processing(toolbox::task::WorkLoop* wl) {
 
 	if (topEvent != 0) {
 
-		std::string type(typeid(*topEvent).name());
-		std::string procMsg = "Processing event: " + type;
+		string type(typeid(*topEvent).name());
+		string procMsg = "AutoBU-->Processing event: " + type;
 
 		LOG4CPLUS_INFO(resources_->logger(), procMsg);
 
@@ -354,15 +342,28 @@ bool BU::processing(toolbox::task::WorkLoop* wl) {
 		size_t foundC, foundH;
 		foundC = type.rfind("ConfigureDone");
 		foundH = type.rfind("HaltDone");
+
 		if (foundC != string::npos || foundH != string::npos) {
 			LOG4CPLUS_INFO(resources_->logger(), "Resetting counters");
-			gui_->resetCounters();
+			resources_->gui_->resetCounters();
 		}
 
 		fsm_->process_event(*topEvent);
-		LOG4CPLUS_INFO(resources_->logger(), "Event processed!");
-
+		try {
+			fsm_->getCurrentState().do_stateAction();
+		} catch (std::bad_cast) {
+			cout
+					<< "AutoBU state machine: STATE SPECIFIC ACTION: NOT CONSTRUCTED!"
+					<< endl;
+			//::sleep(1);
+		}
 	}
+
+	else {
+		// improve semaphore here
+		::sleep(1);
+	}
+
 	return true;
 }
 
@@ -382,46 +383,53 @@ void BU::postI2OFrame(xdaq::ApplicationDescriptor* fuAppDesc,
 
 void BU::exportParameters() {
 	SharedResourcesPtr res = fsm_->getSharedResources();
-	if (0 == gui_) {
+	if (0 == resources_->gui_) {
 		LOG4CPLUS_ERROR(res->logger(), "No GUI, can't export parameters");
 		return;
 	}
 
-	gui_->addMonitorParam("url", &url_);
-	gui_->addMonitorParam("class", &class_);
-	gui_->addMonitorParam("instance", &instance_);
-	gui_->addMonitorParam("hostname", &hostname_);
-	gui_->addMonitorParam("runNumber", &runNumber_);
-	gui_->addMonitorParam("memUsedInMB", &memUsedInMB_);
+	resources_->gui_->addMonitorParam("url", &url_);
+	resources_->gui_->addMonitorParam("class", &class_);
+	resources_->gui_->addMonitorParam("instance", &instance_);
+	resources_->gui_->addMonitorParam("hostname", &hostname_);
+	resources_->gui_->addMonitorParam("runNumber", &runNumber_);
+	resources_->gui_->addMonitorParam("stateName", fsm_->getExternallyVisibleStatePtr());
+	resources_->gui_->addMonitorParam("memUsedInMB", &memUsedInMB_);
 
-	gui_->addMonitorCounter("taskQueueSize", &res->taskQueueSize());
-	gui_->addMonitorCounter("readyToSendQueueSize", &res->rtsQSize());
-	gui_->addMonitorCounter("avgTaskQueueSize", &res->avgTaskQueueSize());
-	gui_->addMonitorCounter("maxFedSizeGenerated", &res->maxFedSizeGen());
-	gui_->addMonitorCounter("nbEvtsInBU", &res->nbEventsInBU());
-	gui_->addMonitorCounter("nbEvtsRequested", &res->nbEventsRequested());
-	gui_->addMonitorCounter("nbEvtsBuilt", &res->nbEventsBuilt());
-	gui_->addMonitorCounter("nbEvtsSent", &res->nbEventsSent());
-	gui_->addMonitorCounter("nbEvtsDiscarded", &res->nbEventsDiscarded());
+	resources_->gui_->addMonitorCounter("taskQueueSize", &res->taskQueueSize());
+	resources_->gui_->addMonitorCounter("readyToSendQueueSize",
+			&res->rtsQSize());
+	resources_->gui_->addMonitorCounter("avgTaskQueueSize",
+			&res->avgTaskQueueSize());
+	resources_->gui_->addMonitorCounter("nbEvtsInBU", &res->nbEventsInBU());
+	resources_->gui_->addMonitorCounter("nbEvtsRequested",
+			&res->nbEventsRequested());
+	resources_->gui_->addMonitorCounter("nbEvtsBuilt", &res->nbEventsBuilt());
+	resources_->gui_->addMonitorCounter("nbEvtsSent", &res->nbEventsSent());
+	resources_->gui_->addMonitorCounter("nbEvtsDiscarded",
+			&res->nbEventsDiscarded());
 
-	gui_->addStandardParam("mode", &res->mode());
-	gui_->addStandardParam("replay", &res->replay());
-	gui_->addStandardParam("overwriteEvtId", &res->overwriteEvtId());
-	gui_->addStandardParam("firstEvent", &res->firstEvent());
-	gui_->addStandardParam("queueSize", &res->queueSize());
-	gui_->addStandardParam("eventBufferSize", &eventBufferSize_);
-	gui_->addStandardParam("msgBufferSize", &res->msgBufferSize());
-	gui_->addStandardParam("fedSizeMax", &res->fedSizeMax());
-	gui_->addStandardParam("initialSuperFragmentSize", &initialSFBuffer_);
-	gui_->addStandardParam("msgChainCreationMode", &res->msgChainCreationMode());
+	resources_->gui_->addStandardParam("mode", &res->mode());
+	resources_->gui_->addStandardParam("replay", &res->replay());
+	resources_->gui_->addStandardParam("overwriteEvtId", &res->overwriteEvtId());
+	resources_->gui_->addStandardParam("firstEvent", &res->firstEvent());
+	resources_->gui_->addStandardParam("queueSize", &res->queueSize());
+	resources_->gui_->addStandardParam("eventBufferSize", &eventBufferSize_);
+	resources_->gui_->addStandardParam("msgBufferSize", &res->msgBufferSize());
+	resources_->gui_->addStandardParam("fedSizeMax", &res->fedSizeMax());
+	resources_->gui_->addStandardParam("fedSizeMean", &res->fedSizeMean());
+	resources_->gui_->addStandardParam("fedSizeWidth", &res->fedSizeWidth());
+	resources_->gui_->addStandardParam("initialSuperFragmentSize",
+			&initialSFBuffer_);
+	resources_->gui_->addStandardParam("msgChainCreationMode",
+			&res->msgChainCreationMode());
 
-	//XXX No RCMS contact on new state machine
-	/*
-	 gui_->addStandardParam("rcmsStateListener", fakeStateMachine_.rcmsStateListener());
-	 gui_->addStandardParam("foundRcmsStateListener",
-	 fakeStateMachine_.foundRcmsStateListener());
-	 */
-	gui_->exportParameters();
+	resources_->gui_->addStandardParam("rcmsStateListener",
+			fsm_->rcmsStateListener());
+	resources_->gui_->addStandardParam("foundRcmsStateListener",
+			fsm_->foundRcmsStateListener());
+
+	resources_->gui_->exportParameters();
 
 }
 
@@ -483,52 +491,6 @@ void BU::handleI2ODiscard(toolbox::mem::Reference *bufRef) const {
 	}
 
 	bufRef->release();
-}
-
-//______________________________________________________________________________
-
-void BU::handleDirectAllocate(const UIntVec_t& fuResourceIds,
-		xdaq::ApplicationDescriptor* fuAppDesc) const {
-
-	if (0 == resources_->fuAppDesc()) {
-		resources_->setFuAppDesc(fuAppDesc);
-	}
-
-	for (UInt_t i = 0; i < fuResourceIds.size(); i++) {
-		UInt_t fuResourceId = fuResourceIds[i];
-
-		// TASK
-		resources_->pushTask('r');
-
-		resources_->lock();
-		resources_->rqstIds()->push(fuResourceId);
-		resources_->increaseEventsRequested();
-		resources_->increaseEventsInBU();
-		resources_->unlock();
-	}
-
-}
-
-//______________________________________________________________________________
-
-void BU::handleDirectDiscard(UInt_t buResourceId) const {
-
-	resources_->lock();
-	int result = resources_->sentIds()->erase(buResourceId);
-	resources_->unlock();
-
-	if (!result) {
-		LOG4CPLUS_ERROR(resources_->logger(),
-				"can't discard unknown buResourceId '" << buResourceId << "'");
-	} else {
-		resources_->lock();
-		resources_->freeIds()->push(buResourceId);
-		resources_->increaseEventsDiscarded();
-		resources_->unlock();
-
-		// TASK
-		resources_->pushTask('b');
-	}
 }
 
 ////////////////////////////////////////////////////////////////////////////////

@@ -17,7 +17,10 @@ Enabled::Enabled(my_context c) :
 }
 
 void Enabled::do_entryActionWork() {
-
+	/*
+	outermost_context().setExternallyVisibleState(do_stateName());
+	outermost_context().rcmsStateChangeNotify("Enabled");
+	*/
 }
 
 Enabled::~Enabled() {

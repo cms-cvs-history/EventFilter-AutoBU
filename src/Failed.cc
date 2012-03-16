@@ -11,7 +11,9 @@ using std::string;
 using namespace evf;
 
 void Failed::do_entryActionWork() {
-
+	outermost_context().setExternallyVisibleState(stateName());
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify(stateName());
 }
 
 Failed::Failed(my_context c) :

@@ -59,9 +59,10 @@ void FrameSizeUtils::dumpFrame(unsigned char* data, unsigned int len) {
 	fflush(stdout);
 }
 
+// max number of frames not doubled when expanding
 SuperFragment* FrameSizeUtils::expandSuperFragment(SuperFragment* initial) {
 	SuperFragment* expandedSF = new SuperFragment(initial->getTrueSize() * 2,
-			initial->getMaxFrames() * 2);
+			initial->getMaxFrames()/* * 2*/);
 
 	expandedSF->getFrl()->segno = initial->getFrl()->segno;
 	expandedSF->getFrl()->trigno = initial->getFrl()->trigno;

@@ -1,8 +1,5 @@
-2011-10-11  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
-	* boost::statechart used for new Auto BU
-
-2011-09-05  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
-	* new AUTO BU on branch
+2012-03-16  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
+	* changed FSM to boost::statechart
 
 2011-09-01  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
 	* added START script and State.pm

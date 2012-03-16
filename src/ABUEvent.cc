@@ -7,6 +7,8 @@
 
 #include "../interface/ABUEvent.h"
 
+using namespace std;
+
 using namespace evf;
 
 ABUEvent::ABUEvent(unsigned int buResourceId, ABUConfig config) :

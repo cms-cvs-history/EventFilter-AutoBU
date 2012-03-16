@@ -18,12 +18,21 @@ Enabling::Enabling(my_context c) :
 }
 
 void Enabling::do_entryActionWork() {
+	outermost_context().setExternallyVisibleState(stateName());
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify(stateName());
+}
+
+Enabling::~Enabling() {
+	safeExitAction();
+}
+
+void Enabling::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 
 	// set stopExecution flag to false
 	resources->stopExecution() = false;
 
-	// ENABLING
 	try {
 		// playback case
 
@@ -41,7 +50,7 @@ void Enabling::do_entryActionWork() {
 			}
 			// random case
 		} else {
-			// put initial build requests in
+			// put valid fed id's in
 			if (!resources->restarted()) {
 				for (unsigned int i = 0; i
 						< (unsigned int) FEDNumbering::MAXFEDID + 1; i++)
@@ -58,6 +67,10 @@ void Enabling::do_entryActionWork() {
 			}
 		}
 
+		// ENABLING
+		// start the main (execution) workloop
+		resources->startExecutionWorkLoop();
+
 		EventPtr stMachEvent(new EnableDone());
 		resources->enqEvent(stMachEvent);
 
@@ -67,11 +80,6 @@ void Enabling::do_entryActionWork() {
 		EventPtr stMachEvent(new Fail());
 		resources->enqEvent(stMachEvent);
 	}
-
-}
-
-Enabling::~Enabling() {
-	safeExitAction();
 }
 
 void Enabling::do_exitActionWork() {

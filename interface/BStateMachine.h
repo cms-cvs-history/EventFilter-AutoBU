@@ -7,11 +7,15 @@
  *      Author: aspataru - andrei.cristian.spataru@cern.ch
  */
 
-#ifndef EVFSTATEMACHINE_H_
-#define EVFSTATEMACHINE_H_
+#ifndef EVFBOOSTSTATEMACHINE_H_
+#define EVFBOOSTSTATEMACHINE_H_
 
-#include "EventFilter/AutoBU/interface/SharedResources.h"
 #include "EventFilter/Utilities/interface/Exception.h"
+#include "EventFilter/AutoBU/interface/ABUEvent.h"
+#include "xdaq2rc/RcmsStateNotifier.h"
+#include "xdata/String.h"
+#include "xdata/Bag.h"
+#include "xdaq/Application.h"
 
 #include <boost/statechart/event.hpp>
 #include <boost/statechart/in_state_reaction.hpp>
@@ -19,14 +23,22 @@
 #include <boost/statechart/state.hpp>
 #include <boost/statechart/transition.hpp>
 #include <boost/mpl/list.hpp>
+#include <boost/shared_ptr.hpp>
 
 #include <iostream>
 #include <string>
 #include <vector>
 
+using std::string;
+using std::cout;
+using std::endl;
+
 namespace bsc = boost::statechart;
 
 namespace evf {
+
+class SharedResources;
+typedef boost::shared_ptr<SharedResources> SharedResourcesPtr;
 
 ////////////////////////////////////////////////
 //// Forward declarations of state classes: ////
@@ -86,6 +98,20 @@ public:
 
 	BaseState();
 	virtual ~BaseState() = 0;
+	/*
+	 * DEFAULT implementations of state-dependent actions
+	 */
+	virtual void do_stateAction() const {
+		cout << "AutoBU state machine: no >>STATE ACTION<< defined for state: "
+				<< stateName() << endl;
+	}
+	virtual bool execute() const {
+		cout << "BStateMachine: current state: " << stateName()
+				<< " does not support action: >>execute<<" << endl;
+		::sleep(1);
+		return true;
+	}
+
 	std::string stateName() const;
 	void moveToFailedState(xcept::Exception& exception) const;
 
@@ -113,7 +139,7 @@ class BStateMachine: public bsc::state_machine<BStateMachine, Normal> {
 
 public:
 
-	BStateMachine(SharedResourcesPtr sr);
+	BStateMachine(xdaq::Application* app, SharedResourcesPtr sr);
 	~BStateMachine();
 
 	std::string getCurrentStateName() const;
@@ -123,11 +149,40 @@ public:
 		return sharedResources_;
 	}
 
-	void setExternallyVisibleState(const std::string&);
+	void setExternallyVisibleState(const std::string& s);
+	void setInternalStateName(const std::string& s);
+
+	inline string getExternallyVisibleState() {
+		return visibleStateName_.value_;
+	}
+	inline xdata::String* getExternallyVisibleStatePtr() {
+		return &visibleStateName_;
+	}
+	inline bool firstTimeInHalted() const {
+		return firstTimeInHalted_;
+	}
+	inline void setFirstTimeInHaltedFalse() {
+		firstTimeInHalted_ = false;
+	}
+
+	// get the RCMS StateListener parameter (classname/instance)
+	xdata::Bag<xdaq2rc::ClassnameAndInstance>* rcmsStateListener();
+	// report if RCMS StateListener was found
+	xdata::Boolean* foundRcmsStateListener();
+	void findRcmsStateListener(xdaq::Application* app);
+	void rcmsStateChangeNotify(string state);
+
+private:
+	void updateWebGUIExternalState(string newStateName) const;
+	void updateWebGUIInternalState(string newStateName) const;
 
 private:
 
 	SharedResourcesPtr sharedResources_;
+	xdaq2rc::RcmsStateNotifier rcmsStateNotifier_;
+	xdata::String visibleStateName_;
+	string internalStateName_;
+	bool firstTimeInHalted_;
 
 };
 
@@ -197,6 +252,12 @@ public:
 	Halted( my_context);
 	virtual ~Halted();
 
+	// state-dependent actions
+	// the execute workloop will be stopped in this state
+	virtual bool execute() const {
+		return false;
+	}
+
 private:
 
 	virtual std::string do_stateName() const;
@@ -221,6 +282,9 @@ public:
 
 	Configuring( my_context);
 	virtual ~Configuring();
+
+	// state-dependent actions
+	virtual void do_stateAction() const;
 
 private:
 
@@ -272,6 +336,12 @@ public:
 	Stopped( my_context);
 	virtual ~Stopped();
 
+	// state-dependent actions
+	// the execute workloop will be stopped in this state
+	virtual bool execute() const {
+		return false;
+	}
+
 private:
 
 	virtual std::string do_stateName() const;
@@ -296,6 +366,9 @@ public:
 
 	Enabling( my_context);
 	virtual ~Enabling();
+
+	// state-dependent actions
+	virtual void do_stateAction() const;
 
 private:
 
@@ -337,29 +410,33 @@ private:
 
  */
 
-class Executing: public bsc::state<Executing, Enabled>,
-		public BaseState,
-		public toolbox::lang::Class {
+class Executing: public bsc::state<Executing, Enabled>, public BaseState {
 
 public:
 
 	Executing( my_context);
 	virtual ~Executing();
 
+	// state-dependent actions
+	virtual void do_stateAction() const;
+	virtual bool execute() const;
+
 private:
 
 	virtual std::string do_stateName() const;
-	virtual void startExecutionWorkLoop() throw (evf::Exception);
 	virtual void do_entryActionWork();
 	virtual void do_exitActionWork();
-	bool execute(toolbox::task::WorkLoop* wl);
-	bool generateEvent(ABUEvent* evt);
+	bool generateEvent(ABUEvent* evt) const;
 	/// Creates a message chain for the Resource Broker
 	toolbox::mem::Reference *createMsgChain(evf::ABUEvent *evt,
-			unsigned int fuResourceId);
+			unsigned int fuResourceId) const;
 	/// Updates the maximum FED size generated
-	void updateMaxFedGen(unsigned int testSize);
 	virtual void do_moveToFailedState(xcept::Exception& exception) const;
+
+private:
+	SharedResourcesPtr resources;
+	double gaussianMean_;
+	double gaussianWidth_;
 
 };
 
@@ -378,6 +455,13 @@ public:
 
 	Stopping( my_context);
 	virtual ~Stopping();
+
+	// state-dependent actions
+	virtual void do_stateAction() const;
+	// this will stop execution of the workloop once the state is reached
+	virtual bool execute() const {
+		return false;
+	}
 
 private:
 
@@ -410,6 +494,13 @@ public:
 	Halting( my_context);
 	virtual ~Halting();
 
+	// state-dependent actions
+	virtual void do_stateAction() const;
+	// this will stop execution of the workloop once the state is reached
+	virtual bool execute() const {
+		return false;
+	}
+
 private:
 
 	virtual std::string do_stateName() const;
@@ -425,4 +516,4 @@ typedef boost::shared_ptr<BStateMachine> BStateMachinePtr;
 
 } // end namespace evf
 
-#endif /* EVFSTATEMACHINE_H_ */
+#endif /* EVFBOOSTSTATEMACHINE_H_ */

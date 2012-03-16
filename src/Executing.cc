@@ -3,10 +3,13 @@
  *  \author A. Spataru - andrei.cristian.spataru@cern.ch
  */
 
+#include "EventFilter/AutoBU/interface/BU.h"
 #include "EventFilter/AutoBU/interface/BStateMachine.h"
+#include "EventFilter/AutoBU/interface/SharedResources.h"
 #include "EventFilter/AutoBU/interface/FrameSizeUtils.h"
 #include "DataFormats/FEDRawData/interface/FEDRawDataCollection.h"
 #include "EventFilter/AutoBU/interface/BUMessageCutter.h"
+#include "CLHEP/Random/RandGauss.h"
 
 #include <iostream>
 
@@ -15,57 +18,41 @@ using std::cout;
 using std::endl;
 using namespace evf;
 
-//#define DEBUG_BU
-
-//______________________________________________________________________________
-
-void Executing::startExecutionWorkLoop() throw (evf::Exception) {
-
-	SharedResourcesPtr resources = outermost_context().getSharedResources();
-
-	try {
-		LOG4CPLUS_INFO(resources->logger(), "Start 'EXECUTION' workloop");
-
-		resources->setWlExecuting(
-				toolbox::task::getWorkLoopFactory()->getWorkLoop(
-						resources->sourceId() + "Executing", "waiting"));
-
-		if (!resources->wlExecuting()->isActive())
-			resources->wlExecuting()->activate();
-
-		resources->setAsExecuting(
-				toolbox::task::bind(this, &Executing::execute,
-						resources->sourceId() + "Executing"));
-
-		if (resources->restarted()) {
-			// XXX
-			// a timeout to allow the resource broker to enable
-			// TAKE messages might be thrown away otherwise
-			::sleep(3);
-		}
-
-		resources->wlExecuting()->submit(resources->asExecuting());
-
-	} catch (xcept::Exception& e) {
-		string msg = "Failed to start workloop 'EXECUTING'.";
-		XCEPT_RETHROW(evf::Exception, msg, e);
-	}
-
-}
+//#define DEBUG_BU_1
+//#define DEBUG_BU_2
+//#define DEBUG_SF_EXPANSION
 
 //______________________________________________________________________________
 
 void Executing::do_entryActionWork() {
+	resources = outermost_context().getSharedResources();
 
-	startExecutionWorkLoop();
+	gaussianMean_ = std::log((double) resources->fedSizeMean());
+	gaussianWidth_ = std::sqrt(
+			std::log(
+					0.5 * (1 + std::sqrt(
+							1.0 + 4.0 * resources->fedSizeWidth().value_
+									* resources->fedSizeWidth().value_
+									/ resources->fedSizeMean().value_
+									/ resources->fedSizeMean().value_))));
+	resources->buResIdInUse_ = 0;
 
+	outermost_context().setExternallyVisibleState("Enabled");
+	outermost_context().setInternalStateName(stateName());
+	outermost_context().rcmsStateChangeNotify("Enabled");
 }
 
 //______________________________________________________________________________
 
-bool Executing::execute(toolbox::task::WorkLoop* wl) {
+void Executing::do_stateAction() const {
+	/*
 
-	SharedResourcesPtr resources = outermost_context().getSharedResources();
+	 */
+}
+
+//______________________________________________________________________________
+
+bool Executing::execute() const {
 
 	if (resources->stopExecution()) {
 		LOG4CPLUS_INFO(resources->logger(), "Stopping 'execute' workloop!");
@@ -109,6 +96,7 @@ bool Executing::execute(toolbox::task::WorkLoop* wl) {
 			}
 
 			ABUEvent* evt = resources->eventAt(buResourceId);
+			resources->buResIdInUse_ = buResourceId;
 			if (generateEvent(evt)) {
 				resources->lock();
 				resources->increaseEventsBuilt();
@@ -176,15 +164,14 @@ bool Executing::execute(toolbox::task::WorkLoop* wl) {
 				resources->increaseEventsSent();
 				resources->sentIds()->insert(buResourceId);
 				resources->unlock();
-#ifdef DEBUG_BU
+#ifdef DEBUG_BU_1
 				std::cout << "posting frame for resource id " << buResourceId
 				<< std::endl;
 #endif
 
-				// BUFU
-				resources->interface()->take(resources->fuAppDesc(), msg);
+				resources->bu()->postI2OFrame(resources->fuAppDesc(), msg);
 
-#ifdef DEBUG_BU
+#ifdef DEBUG_BU_1
 				std::cout << "posted frame for resource id " << buResourceId
 				<< std::endl;
 #endif
@@ -199,6 +186,7 @@ bool Executing::execute(toolbox::task::WorkLoop* wl) {
 
 	else {
 		resources->qUnlock();
+		::usleep(10000);
 	}
 
 	return true;
@@ -216,8 +204,7 @@ Executing::Executing(my_context c) :
 void Executing::do_exitActionWork() {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 	resources->stopExecution() = true;
-	// XXX allow the working thread to exit
-	sleep(2);
+	::usleep(10000);
 }
 
 //______________________________________________________________________________
@@ -234,9 +221,9 @@ string Executing::do_stateName() const {
 
 //______________________________________________________________________________
 
-bool Executing::generateEvent(ABUEvent* evt) {
+bool Executing::generateEvent(ABUEvent* evt) const {
 
-	SharedResourcesPtr resources = outermost_context().getSharedResources();
+	//SharedResourcesPtr resources = outermost_context().getSharedResources();
 
 	// replay?
 	if (resources->replay().value_ && resources->nbEventsBuilt()
@@ -250,7 +237,7 @@ bool Executing::generateEvent(ABUEvent* evt) {
 
 	// if event is not empty, memory is already allocated
 	if (evt->isInitialised()) {
-#ifdef DEBUG_BU
+#ifdef DEBUG_BU_2
 		std::cout << "event is initialized, resetting with: " << evtNumber
 		<< std::endl;
 #endif
@@ -260,7 +247,7 @@ bool Executing::generateEvent(ABUEvent* evt) {
 		}
 		// event is empty, need space for superfragments
 	} else {
-#ifdef DEBUG_BU
+#ifdef DEBUG_BU_2
 		std::cout << "event is NOT initialized, starting it with: "
 		<< evtNumber << std::endl;
 #endif
@@ -305,19 +292,40 @@ bool Executing::generateEvent(ABUEvent* evt) {
 				pushedOK = sf->pushFrame(evt->getEvtNumber(),
 						resources->validFedIdAt(currentFedIndex),
 						MIN_WORDS_IN_FRAME, INITIAL_CRC);
-				updateMaxFedGen(MIN_WORDS_IN_FRAME * BYTES_IN_WORD);
 			}
 
 			// RANDOM-SIMPLE
 			else if ("RANDOM-SIMPLE" == resources->mode().toString()) {
-				unsigned int maxSize = resources->fedSizeMax() / 2;
-				maxSize /= WORD_SIZE_IN_BITS;
-				unsigned int randSize = FrameSizeUtils::boundedRandom(maxSize);
+				unsigned int maxSizeForRandomSimple = resources->fedSizeMax()
+						/ 16;
+				maxSizeForRandomSimple /= BYTES_IN_WORD;
+				unsigned int randSize = FrameSizeUtils::boundedRandom(
+						maxSizeForRandomSimple);
 
 				pushedOK = sf->pushFrame(evt->getEvtNumber(),
 						resources->validFedIdAt(currentFedIndex), randSize,
 						INITIAL_CRC);
-				updateMaxFedGen(randSize * BYTES_IN_WORD);
+			}
+
+			// A LA EMILIO
+			else if ("REALISTIC" == resources->mode().toString()) {
+				unsigned int fedSizeMin = MIN_WORDS_IN_FRAME * BYTES_IN_WORD;
+				unsigned int fedSize = resources->fedSizeMean().value_;
+				double logFedSize = CLHEP::RandGauss::shoot(gaussianMean_,
+						gaussianWidth_);
+				fedSize = (unsigned int) (std::exp(logFedSize));
+				if (fedSize < fedSizeMin)
+					fedSize = fedSizeMin;
+				if (fedSize > resources->fedSizeMax().value_)
+					fedSize = resources->fedSizeMax().value_;
+				fedSize -= fedSize % 8;
+
+				// FED Size in WORDS... pushFrame takes the size in WORDS
+				fedSize /= BYTES_IN_WORD;
+
+				pushedOK = sf->pushFrame(evt->getEvtNumber(),
+						resources->validFedIdAt(currentFedIndex), fedSize,
+						INITIAL_CRC);
 			}
 
 			// PLAYBACK
@@ -339,8 +347,6 @@ bool Executing::generateEvent(ABUEvent* evt) {
 					}
 
 					pushedOK = sf->pushFrame(fedAddr, fedSize);
-					updateMaxFedGen(fedSize);
-
 				} else {
 					// no expansion needed in this case
 					// just skip
@@ -365,8 +371,9 @@ bool Executing::generateEvent(ABUEvent* evt) {
 				evt->replaceSuperFragment(iSf, expanded);
 				sf = evt->sfAt(iSf);
 				sf->use();
-#ifdef DEBUG_BU
-				std::cout << "Expanding SF " << iSf << " to new size "
+#ifdef DEBUG_SF_EXPANSION
+				std::cout << "Expanding: (Ev.SF) " << resources->buResIdInUse_
+				<< "." << iSf << " to new size "
 				<< evt->sfAt(iSf)->getTrueSize() << std::endl;
 #endif
 			}
@@ -397,9 +404,9 @@ bool Executing::generateEvent(ABUEvent* evt) {
 //______________________________________________________________________________
 
 toolbox::mem::Reference *Executing::createMsgChain(ABUEvent* evt,
-		unsigned int fuResourceId) {
+		unsigned int fuResourceId) const {
 
-	SharedResourcesPtr resources = outermost_context().getSharedResources();
+	//SharedResourcesPtr resources = outermost_context().getSharedResources();
 
 	// initialize message cutter
 	BUMessageCutter mCutter(resources->msgBufferSize(), resources->logger(),
@@ -411,15 +418,6 @@ toolbox::mem::Reference *Executing::createMsgChain(ABUEvent* evt,
 	}
 	return mCutter.createMessageChain(evt, fuResourceId);
 
-}
-
-//______________________________________________________________________________
-
-void Executing::updateMaxFedGen(unsigned int testSize) {
-	SharedResourcesPtr resources = outermost_context().getSharedResources();
-	if (testSize > resources->maxFedSizeGen()) {
-		resources->maxFedSizeGen() = testSize;
-	}
 }
 
 //______________________________________________________________________________

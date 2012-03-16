@@ -10,12 +10,11 @@
 
 // required for binding
 #include "xdaq/Application.h"
-
-#include "EventFilter/BUFUInterface/interface/BUFUInterface.h"
+#include "EventFilter/AutoBU/interface/BStateMachine.h"
 #include "EventFilter/Playback/interface/PlaybackRawDataProvider.h"
 #include "EventFilter/AutoBU/interface/ABUEvent.h"
 #include "EventFilter/AutoBU/interface/BUTask.h"
-#include "EventFilter/BUFUInterface/interface/BaseBU.h"
+#include "EventFilter/Utilities/interface/IndependentWebGUI.h"
 
 #include "toolbox/task/WorkLoopFactory.h"
 #include "toolbox/task/WaitingWorkLoop.h"
@@ -38,15 +37,40 @@ using namespace toolbox;
 
 namespace evf {
 
+class BU;
+
 typedef boost::shared_ptr<boost::statechart::event_base> EventPtr;
 
-class SharedResources {
+class SharedResources: public toolbox::lang::Class {
 
 public:
+
 	SharedResources();
 	~SharedResources();
 
+	/*
+	 * WORKLOOPS
+	 */
+	virtual void startExecutionWorkLoop() throw (evf::Exception);
+	bool execute(toolbox::task::WorkLoop* wl);
+
+	void setFsmPointer(BStateMachine* const fsm) {
+		fsm_ = fsm;
+	}
+
+	unsigned int buResIdInUse_;
+
 	void reset();
+	void updateGUIExternalState(string newState) {
+		//lock();
+		gui_->updateExternalState(newState);
+		//unlock();
+	}
+	void updateGUIInternalState(string newState) {
+		//lock();
+		gui_->updateInternalState(newState);
+		//unlock();
+	}
 	/// Adds a task to the task queue
 	bool pushTask(unsigned char type);
 	/// Registers the current size of the task queue
@@ -85,10 +109,8 @@ public:
 	 */
 	Logger logger() const;
 	void setLogger(Logger log);
-	BUFUInterface* interface() const;
-	void setInterface(BUFUInterface* bufu);
-	BaseBU* bu() const;
-	void setBu(BaseBU* bu);
+	BU* bu() const;
+	void setBu(BU* bu);
 	xdaq::ApplicationDescriptor* fuAppDesc() const;
 	void setFuAppDesc(xdaq::ApplicationDescriptor* fuAppDesc);
 	xdaq::ApplicationDescriptor* buAppDesc() const;
@@ -115,12 +137,13 @@ public:
 	xdata::UnsignedInteger32& nbEventsSent();
 	void increaseEventsSent();
 	xdata::UnsignedInteger32& msgBufferSize();
-	xdata::UnsignedInteger32& maxFedSizeGen();
 	xdata::UnsignedInteger32& nbEventsRequested();
 	void increaseEventsRequested();
 	xdata::UnsignedInteger32& nbEventsDiscarded();
 	void increaseEventsDiscarded();
 	xdata::UnsignedInteger32& fedSizeMax();
+	xdata::UnsignedInteger32& fedSizeMean();
+	xdata::UnsignedInteger32& fedSizeWidth();
 	std::queue<BUTask>* taskQueue();
 	std::vector<ABUEvent*>* events();
 	std::queue<unsigned int>* builtIds();
@@ -141,14 +164,19 @@ public:
 	std::string sourceId() const;
 	void setSourceId(std::string sourceId);
 
+public:
+	// BU web interface
+	IndependentWebGUI *gui_;
+
 private:
 	/*
 	 * variables
 	 */
+	// pointer to FSM
+	BStateMachine* fsm_;
 	// Pointer to BU instance
-	BaseBU* bu_;
-	/// BUFU Interface
-	BUFUInterface* bufu_;
+	BU* bu_;
+
 	// BU message logger
 	Logger log_;
 	// BU application descriptor
@@ -156,6 +184,9 @@ private:
 	// FU application descriptor
 	xdaq::ApplicationDescriptor *fuAppDesc_;
 
+	/*
+	 * The all-important gang of resources
+	 */
 	std::vector<unsigned int> validFedIds_;
 	std::queue<unsigned int> freeIds_;
 	std::vector<evf::ABUEvent*> events_;
@@ -180,11 +211,12 @@ private:
 	xdata::Boolean overwriteEvtId_;
 	xdata::String msgChainCreationMode_;
 	xdata::UnsignedInteger32 msgBufferSize_;
-	xdata::UnsignedInteger32 maxFedSizeGenerated_;
 	xdata::UnsignedInteger32 avgTaskQueueSize_;
 	xdata::UnsignedInteger32 nbEventsRequested_;
 	xdata::UnsignedInteger32 nbEventsDiscarded_;
 	xdata::UnsignedInteger32 fedSizeMax_;
+	xdata::UnsignedInteger32 fedSizeMean_;
+	xdata::UnsignedInteger32 fedSizeWidth_;
 
 	// TASK QUEUE
 	std::queue<BUTask> taskQueue_;

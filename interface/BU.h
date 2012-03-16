@@ -7,11 +7,8 @@
 #ifndef AUTOBU_BU_H
 #define AUTOBU_BU_H 1
 
-#include "EventFilter/BUFUInterface/interface/BaseBU.h"
-#include "EventFilter/BUFUInterface/interface/BUFUInterface.h"
 #include "EventFilter/AutoBU/interface/BStateMachine.h"
 #include "EventFilter/AutoBU/interface/SharedResources.h"
-#include "EventFilter/AutoBU/interface/WebGUI2.h"
 
 #include "EventFilter/Utilities/interface/Exception.h"
 #include "EventFilter/Playback/interface/PlaybackRawDataProvider.h"
@@ -29,7 +26,7 @@
 
 namespace evf {
 
-class BU: public xdaq::Application, public xdata::ActionListener, public BaseBU {
+class BU: public xdaq::Application, public xdata::ActionListener {
 public:
 	//
 	// xdaq instantiator macro
@@ -54,17 +51,9 @@ public:
 	void I2O_BU_ALLOCATE_Callback(toolbox::mem::Reference *bufRef);
 	void I2O_BU_DISCARD_Callback(toolbox::mem::Reference *bufRef);
 
-	// direct calls
-	void DIRECT_BU_ALLOCATE(const UIntVec_t& fuResourceIds,
-			xdaq::ApplicationDescriptor* fuAppDesc);
-	void DIRECT_BU_DISCARD(UInt_t buResourceId);
-
 	// I2O & Direct Call handling
 	void handleI2OAllocate(toolbox::mem::Reference *bufRef) const;
 	void handleI2ODiscard(toolbox::mem::Reference *bufRef) const;
-	void handleDirectAllocate(const UIntVec_t& fuResourceIds,
-			xdaq::ApplicationDescriptor* fuAppDesc) const;
-	void handleDirectDiscard(UInt_t buResourceId) const;
 
 	// workloop / action signature for event processing
 	toolbox::task::WorkLoop *wlProcessingEvents_;
@@ -83,7 +72,6 @@ public:
 	void startEventProcessingWorkloop() throw (evf::Exception);
 	bool processing(toolbox::task::WorkLoop* wl);
 
-	// BUFU
 	void postI2OFrame(xdaq::ApplicationDescriptor* fuAppDesc,
 			toolbox::mem::Reference* bufRef);
 
@@ -106,10 +94,6 @@ private:
 
 	// BU state machine
 	boost::shared_ptr<BStateMachine> fsm_;
-
-	// BU web interface
-	// modified to work with boost::statechart
-	WebGUI2 *gui_;
 
 	std::vector<evf::SuperFragment*> sFragments_;
 

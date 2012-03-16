@@ -9,15 +9,15 @@
 
 using namespace evf;
 
-
 SharedResources::SharedResources() :
-	queueSize_(1), taskQueueSize_(0), nbEventsBuilt_(0),
+	gui_(0), queueSize_(1), taskQueueSize_(0), nbEventsBuilt_(0),
 			readyToSendQueueSize_(0), nbEventsInBU_(0), nbEventsSent_(0),
 			replay_(false), firstEvent_(1), mode_("RANDOM-SIMPLE"),
 			overwriteEvtId_(true), msgChainCreationMode_("NORMAL"),
-			maxFedSizeGenerated_(0), avgTaskQueueSize_(0),
-			nbEventsRequested_(0), nbEventsDiscarded_(0), fedSizeMax_(0),
-			evtNumber_(0), buTaskId_(0), stopExecution_(false), wasRestarted_(false) {
+			avgTaskQueueSize_(0), nbEventsRequested_(0), nbEventsDiscarded_(0),
+			fedSizeMax_(65536), fedSizeMean_(16), fedSizeWidth_(1024),
+			evtNumber_(0), buTaskId_(0), stopExecution_(false),
+			wasRestarted_(false) {
 }
 
 SharedResources::~SharedResources() {
@@ -27,27 +27,61 @@ SharedResources::~SharedResources() {
 	}
 }
 
+void SharedResources::startExecutionWorkLoop() throw (evf::Exception) {
+
+	try {
+		LOG4CPLUS_INFO(logger(), "Start 'EXECUTION' workloop");
+
+		setWlExecuting(
+				toolbox::task::getWorkLoopFactory()->getWorkLoop(
+						sourceId() + "Executing", "waiting"));
+
+		if (!wlExecuting()->isActive())
+			wlExecuting()->activate();
+
+		setAsExecuting(
+				toolbox::task::bind(this, &SharedResources::execute,
+						sourceId() + "Executing"));
+
+		if (restarted()) {
+			// FIXME necessary?
+			// a timeout to allow the resource broker to enable
+			// TAKE messages might be thrown away otherwise
+			::sleep(3);
+		}
+
+		wlExecuting()->submit(asExecuting());
+
+	} catch (xcept::Exception& e) {
+		string msg = "Failed to start workloop 'EXECUTING'.";
+		XCEPT_RETHROW(evf::Exception, msg, e);
+	}
+
+}
+
+//  executing workloop DISPATCHING SIGNATURE
+bool SharedResources::execute(toolbox::task::WorkLoop* workLoop) {
+	try {
+		return fsm_->getCurrentState().execute();
+	} catch (std::bad_cast) {
+		cout << "execute: State not constructed!!!" << endl;
+		::sleep(1);
+		return true;
+	}
+}
+
 Logger SharedResources::logger() const {
 	return log_;
 }
 void SharedResources::setLogger(Logger log) {
 	log_ = log;
 }
-BUFUInterface* SharedResources::interface() const {
-	return bufu_;
-}
-void SharedResources::setInterface(BUFUInterface* bufu) {
-	bufu_ = bufu;
-}
-
-BaseBU* SharedResources::bu() const {
+BU* SharedResources::bu() const {
 	return bu_;
 }
-
-void SharedResources::setBu(BaseBU* bu) {
+void SharedResources::setBu(BU* bu) {
 	bu_ = bu;
 }
-
 xdaq::ApplicationDescriptor* SharedResources::fuAppDesc() const {
 	return fuAppDesc_;
 }
@@ -127,9 +161,6 @@ void SharedResources::increaseEventsSent() {
 xdata::UnsignedInteger32& SharedResources::msgBufferSize() {
 	return msgBufferSize_;
 }
-xdata::UnsignedInteger32& SharedResources::maxFedSizeGen() {
-	return maxFedSizeGenerated_;
-}
 xdata::UnsignedInteger32& SharedResources::nbEventsRequested() {
 	return nbEventsRequested_;
 }
@@ -144,6 +175,12 @@ void SharedResources::increaseEventsDiscarded() {
 }
 xdata::UnsignedInteger32& SharedResources::fedSizeMax() {
 	return fedSizeMax_;
+}
+xdata::UnsignedInteger32& SharedResources::fedSizeMean() {
+	return fedSizeMean_;
+}
+xdata::UnsignedInteger32& SharedResources::fedSizeWidth() {
+	return fedSizeWidth_;
 }
 std::queue<BUTask>* SharedResources::taskQueue() {
 	return &taskQueue_;
@@ -202,7 +239,7 @@ bool& SharedResources::stopExecution() {
 	return stopExecution_;
 }
 
-bool& SharedResources::restarted()  {
+bool& SharedResources::restarted() {
 	return wasRestarted_;
 }
 
@@ -217,7 +254,8 @@ void SharedResources::reset() {
 		delete events_.back();
 		events_.pop_back();
 	}
-
+	while (!validFedIds_.empty())
+		validFedIds_.pop_back();
 	while (!rqstIds_.empty())
 		rqstIds_.pop();
 	while (!freeIds_.empty())
@@ -237,6 +275,11 @@ void SharedResources::reset() {
 		events_.push_back(new ABUEvent(i, config));
 		freeIds_.push(i);
 	}
+
+	nbEventsBuilt_ = 0;
+	evtNumber_ = 0;
+	wasRestarted_ = false;
+
 }
 
 //______________________________________________________________________________

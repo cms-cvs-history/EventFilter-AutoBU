@@ -22,7 +22,7 @@ ABUConfig::ABUConfig() :
 ABUConfig::ABUConfig(string configFilePath) :
 	configFilePath_(configFilePath) {
 
-	//todo load external values and initialise
+	//improve load external values and initialise
 }
 
 ABUConfig::~ABUConfig() {
