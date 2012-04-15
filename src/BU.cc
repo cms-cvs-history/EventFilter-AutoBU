@@ -225,8 +225,8 @@ bool BU::stopping(toolbox::task::WorkLoop* wl)
   try {
     LOG4CPLUS_INFO(log_,"Start stopping :) ...");
 
-    if (0!=PlaybackRawDataProvider::instance()&&
-	(!replay_.value_||nbEventsBuilt_<(uint32_t)events_.size())) { 
+    if (0!=PlaybackRawDataProvider::instance()) { /*&&
+	(!replay_.value_||nbEventsBuilt_<(uint32_t)events_.size())) { */
       lock();
       freeIds_.push(events_.size()); 
       unlock();
@@ -251,6 +251,7 @@ bool BU::stopping(toolbox::task::WorkLoop* wl)
       ::sleep(1);
     }
     reset();
+    //postBuild();
     /* this is not needed and should not run if reset is called
     if (0!=PlaybackRawDataProvider::instance()&&
 	(replay_.value_&&nbEventsBuilt_>=(uint32_t)events_.size())) {
