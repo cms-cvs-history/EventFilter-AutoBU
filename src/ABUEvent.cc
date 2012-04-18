@@ -5,29 +5,31 @@
  *      Author: aspataru
  */
 
-#include "../interface/ABUEvent.h"
+#include "EventFilter/AutoBU/interface/ABUEvent.h"
 
-using namespace std;
+#include <iostream>
 
 using namespace evf;
 
 ABUEvent::ABUEvent(unsigned int buResourceId, ABUConfig config) :
 	buResourceId_(buResourceId), config_(config),
-			maxSize_(config_.evtCapacity()),
-			sFragments_(new SuperFragment*[maxSize_]), evtNumber_(0),
-			initialized_(false) {
+			maxSize_(config_.evtCapacity()), evtNumber_(0), initialized_(false) {
 
 }
 
 ABUEvent::~ABUEvent() {
-	delete[] sFragments_;
+	while (sFragments_.size()) {
+		delete sFragments_.back();
+		sFragments_.pop_back();
+	}
 }
 
 void ABUEvent::initialise(unsigned int evtNumber) {
 	evtNumber_ = evtNumber;
 	for (unsigned int i = 0; i < maxSize_; i++) {
-		sFragments_[i] = new SuperFragment(config_.superFragSizeAt(i));
-		sFragments_[i]->setFrlTrigno(evtNumber_);
+		SuperFragment* current = new SuperFragment(config_.superFragSizeAt(i));
+		current->setFrlTrigno(evtNumber_);
+		sFragments_.push_back(current);
 	}
 	initialized_ = true;
 }
@@ -38,10 +40,6 @@ const unsigned int ABUEvent::fedCount() const {
 		count += sFragments_[i]->getUsedFrames();
 	}
 	return count;
-}
-
-SuperFragment** ABUEvent::getSuperFragments() const {
-	return sFragments_;
 }
 
 const unsigned int ABUEvent::getBuResourceId() const {

@@ -79,7 +79,7 @@ private:
 	//
 	// private member functions
 	//
-	void initialiseSharedResources(SharedResourcesPtr res);
+	void initialiseSharedResources(autobu_statemachine::SharedResourcesPtr res);
 	void exportParameters();
 
 	void bindStateMachineCallbacks();
@@ -90,12 +90,10 @@ private:
 	//
 
 	// Shared Resources
-	SharedResourcesPtr resources_;
+	autobu_statemachine::SharedResourcesPtr resources_;
 
 	// BU state machine
-	boost::shared_ptr<BStateMachine> fsm_;
-
-	std::vector<evf::SuperFragment*> sFragments_;
+	boost::shared_ptr<autobu_statemachine::BStateMachine> fsm_;
 
 	// monitored parameters
 	xdata::String url_;

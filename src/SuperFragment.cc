@@ -6,6 +6,7 @@
  */
 
 #include "EventFilter/AutoBU/interface/SuperFragment.h"
+#include "FWCore/Utilities/interface/CRC16.h"
 
 #include <cstring>
 #include <iostream>
@@ -19,7 +20,8 @@ SuperFragment::SuperFragment(unsigned int fedSize) :
 			bufferPos_(bufferStart_),
 			bufferEnd_(&bufferStart_[INITIAL_SUPERFRAGMENT_SIZE_BYTES]),
 			maxFrames_(fedSize), usedFrames_(0),
-			trueByteSize_(INITIAL_SUPERFRAGMENT_SIZE_BYTES), used_(false) {
+			trueByteSize_(INITIAL_SUPERFRAGMENT_SIZE_BYTES), used_(false),
+			computeCRC_(false) {
 
 	frlHeader_.trigno = 0;
 	frlHeader_.segno = 0;
@@ -50,10 +52,18 @@ bool SuperFragment::pushFrame(int evt_ty, int lvl1_ID, int bx_ID,
 
 		FEDFrame frameToPush(evt_ty, lvl1_ID, bx_ID, source_ID, version, H,
 				evt_lgth, crc, evt_stat, tts, T);
+
+		if (computeCRC_) {
+			int newCRC = evf::compute_crc(frameToPush.getBufferStart(),
+					frameToPush.size());
+			// set computed CRC in trailer
+			frameToPush.getTrailer().set(frameToPush.getTrailerStart(),
+					evt_lgth, newCRC, evt_stat, tts, T);
+		}
+
 		memcpy(bufferPos_, frameToPush.getBufferStart(), frameToPush.size());
 
-		bufferPos_ += frameToPush.size();
-
+		bufferPos_ += bufferSize;
 		usedFrames_++;
 
 		increaseFrlSegsize(frameToPush.size());

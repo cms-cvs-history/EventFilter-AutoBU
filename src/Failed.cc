@@ -8,7 +8,7 @@
 #include <iostream>
 
 using std::string;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 void Failed::do_entryActionWork() {
 	outermost_context().setExternallyVisibleState(stateName());

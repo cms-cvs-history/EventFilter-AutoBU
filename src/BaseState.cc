@@ -18,7 +18,7 @@
 
 using std::string;
 using namespace boost::statechart;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 BaseState::BaseState() {
 }

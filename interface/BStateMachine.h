@@ -37,6 +37,22 @@ namespace bsc = boost::statechart;
 
 namespace evf {
 
+namespace autobu_statemachine {
+
+enum States {
+	HALTED,
+	CONFIGURING,
+	READY,
+	STOPPED,
+	ENABLING,
+	ENABLED,
+	EXECUTING,
+	STOPPING,
+	HALTING,
+	NORMAL,
+	FAILED
+};
+
 class SharedResources;
 typedef boost::shared_ptr<SharedResources> SharedResourcesPtr;
 
@@ -513,6 +529,8 @@ private:
 };
 
 typedef boost::shared_ptr<BStateMachine> BStateMachinePtr;
+
+} // end namespace autobu_statmachine
 
 } // end namespace evf
 

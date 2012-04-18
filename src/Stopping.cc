@@ -9,7 +9,7 @@
 #include <iostream>
 
 using std::endl;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 Stopping::Stopping(my_context c) :
 	my_base(c) {
@@ -25,25 +25,39 @@ void Stopping::do_entryActionWork() {
 void Stopping::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 
-	//resources->stopExecution() = true;
-
 	// STOPPING
 	try {
-		LOG4CPLUS_INFO(resources->logger(), "Start stopping :) ...");
+		LOG4CPLUS_INFO(resources->log_, "Start stopping :) ...");
 
 		if (0 != PlaybackRawDataProvider::instance()
-				&& (!resources->replay().value_ || resources->nbEventsBuilt()
-						< (uint32_t) resources->events()->size())) {
+				&& (!resources->replay_.value_ || resources->nbEventsBuilt_
+						< (uint32_t) resources->events_.size())) {
 
 			// let the playback go to the last event and exit
-			LOG4CPLUS_INFO(resources->logger(), "Playback going to last event!");
+			LOG4CPLUS_INFO(resources->log_, "Playback going to last event!");
 			PlaybackRawDataProvider::instance()->setFreeToEof();
 		}
 
-		// set restarted flag
-		resources->restarted() = true;
+		// clear task queue
+		while (resources->taskQueue_.size() > 0)
+			resources->taskQueue_.pop();
+		resources->taskQueueSize_ = resources->taskQueue_.size();
 
-		LOG4CPLUS_INFO(resources->logger(), "Finished stopping!");
+		// clear ReadyToSend Id's
+		while (resources->readyIds_.size() > 0)
+			resources->readyIds_.pop();
+		resources->readyToSendQueueSize_ = resources->readyIds_.size();
+
+		// reset average queue size counter
+		resources->avgTaskQueueSize_ = 0;
+
+		resources->emptyQueues();
+		resources->resetCounters();
+
+		//todo remove?
+		resources->initSemaphores();
+
+		LOG4CPLUS_INFO(resources->log_, "Finished stopping!");
 
 		EventPtr stMachEvent(new StopDone());
 		resources->enqEvent(stMachEvent);

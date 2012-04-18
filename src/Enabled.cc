@@ -9,7 +9,7 @@
 #include <iostream>
 
 using std::string;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 Enabled::Enabled(my_context c) :
 	my_base(c) {
@@ -18,7 +18,7 @@ Enabled::Enabled(my_context c) :
 
 void Enabled::do_entryActionWork() {
 	/*
-	outermost_context().setExternallyVisibleState(do_stateName());
+	outermost_context().setExternallyVisibleState(stateName());
 	outermost_context().rcmsStateChangeNotify("Enabled");
 	*/
 }

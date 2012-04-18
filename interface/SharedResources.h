@@ -39,6 +39,8 @@ namespace evf {
 
 class BU;
 
+namespace autobu_statemachine {
+
 typedef boost::shared_ptr<boost::statechart::event_base> EventPtr;
 
 class SharedResources: public toolbox::lang::Class {
@@ -60,7 +62,10 @@ public:
 
 	unsigned int buResIdInUse_;
 
-	void reset();
+	void resetCounters();
+	void initSemaphores();
+	void emptyQueues();
+	void populateEvents();
 	void updateGUIExternalState(string newState) {
 		//lock();
 		gui_->updateExternalState(newState);
@@ -81,9 +86,6 @@ public:
 	// event queue access (thread safe)
 	void enqEvent(EventPtr evType);
 	EventPtr deqEvent();
-	// flags
-	bool& stopExecution();
-	bool& restarted();
 
 	/*
 	 * CONCURRENT ACCESS
@@ -103,66 +105,6 @@ public:
 	void initEvQSem() {
 		sem_init(&evQLock_, 0, 1);
 	}
-
-	/*
-	 * ACCESS TO SHARED VARIABLES
-	 */
-	Logger logger() const;
-	void setLogger(Logger log);
-	BU* bu() const;
-	void setBu(BU* bu);
-	xdaq::ApplicationDescriptor* fuAppDesc() const;
-	void setFuAppDesc(xdaq::ApplicationDescriptor* fuAppDesc);
-	xdaq::ApplicationDescriptor* buAppDesc() const;
-	void setBuAppDesc(xdaq::ApplicationDescriptor* buAppDesc);
-	std::vector<unsigned int>* validFedIds();
-	std::queue<unsigned int>* freeIds();
-	xdata::UnsignedInteger32& queueSize();
-	xdata::UnsignedInteger32& taskQueueSize();
-	void decreaseTaskQueueSize();
-	xdata::UnsignedInteger32& nbEventsBuilt();
-	void increaseEventsBuilt();
-	xdata::UnsignedInteger32& rtsQSize();
-	xdata::UnsignedInteger32& firstEvent();
-	xdata::UnsignedInteger32& avgTaskQueueSize();
-	xdata::Boolean& replay();
-	xdata::String& mode();
-	xdata::String& msgChainCreationMode();
-	xdata::Boolean& overwriteEvtId();
-	void increaseRTSQS();
-	void decreaseRTSQS();
-	xdata::UnsignedInteger32& nbEventsInBU();
-	void decreaseEventsInBU();
-	void increaseEventsInBU();
-	xdata::UnsignedInteger32& nbEventsSent();
-	void increaseEventsSent();
-	xdata::UnsignedInteger32& msgBufferSize();
-	xdata::UnsignedInteger32& nbEventsRequested();
-	void increaseEventsRequested();
-	xdata::UnsignedInteger32& nbEventsDiscarded();
-	void increaseEventsDiscarded();
-	xdata::UnsignedInteger32& fedSizeMax();
-	xdata::UnsignedInteger32& fedSizeMean();
-	xdata::UnsignedInteger32& fedSizeWidth();
-	std::queue<BUTask>* taskQueue();
-	std::vector<ABUEvent*>* events();
-	std::queue<unsigned int>* builtIds();
-	std::queue<unsigned int>* readyIds();
-	std::queue<unsigned int>* rqstIds();
-	std::set<unsigned int>* sentIds();
-	unsigned int& eventNumber();
-	toolbox::mem::Pool* i2oPool();
-	void setI2OPool(toolbox::mem::Pool* pool);
-	// convenience method
-	ABUEvent* eventAt(unsigned int pos) const;
-	// convenience method
-	unsigned int validFedIdAt(unsigned int pos) const;
-	void setWlExecuting(toolbox::task::WorkLoop* wlEx);
-	toolbox::task::WorkLoop* wlExecuting() const;
-	void setAsExecuting(toolbox::task::ActionSignature* asEx);
-	toolbox::task::ActionSignature* asExecuting() const;
-	std::string sourceId() const;
-	void setSourceId(std::string sourceId);
 
 public:
 	// BU web interface
@@ -209,6 +151,7 @@ private:
 	xdata::UnsignedInteger32 firstEvent_;
 	xdata::String mode_;
 	xdata::Boolean overwriteEvtId_;
+	xdata::Boolean crc_;
 	xdata::String msgChainCreationMode_;
 	xdata::UnsignedInteger32 msgBufferSize_;
 	xdata::UnsignedInteger32 avgTaskQueueSize_;
@@ -217,6 +160,7 @@ private:
 	xdata::UnsignedInteger32 fedSizeMax_;
 	xdata::UnsignedInteger32 fedSizeMean_;
 	xdata::UnsignedInteger32 fedSizeWidth_;
+	xdata::Boolean useFixedFedSize_;
 
 	// TASK QUEUE
 	std::queue<BUTask> taskQueue_;
@@ -245,11 +189,25 @@ private:
 
 	// flags
 	bool stopExecution_;
-	bool wasRestarted_;
+
+	/*
+	 * FRIENDS
+	 */
+	friend class evf::BU;
+
+	friend class Configuring;
+	friend class Enabled;
+	friend class Enabling;
+	friend class Executing;
+	friend class Halting;
+	friend class Ready;
+	friend class Stopping;
 
 };
 
 typedef boost::shared_ptr<SharedResources> SharedResourcesPtr;
+
+} // end namespace autobu_statemachine
 
 } //end namespace evf
 

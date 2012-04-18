@@ -9,7 +9,7 @@
 #include <typeinfo>
 #include <fstream>
 
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 BStateMachine::BStateMachine(xdaq::Application* app, SharedResourcesPtr sr) :
 			sharedResources_(sr),

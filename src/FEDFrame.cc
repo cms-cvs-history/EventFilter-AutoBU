@@ -7,12 +7,13 @@
 
 #include "EventFilter/AutoBU/interface/FEDFrame.h"
 #include "EventFilter/AutoBU/interface/Constants.h"
-#include "EventFilter/AutoBU/interface/CRC16.h"
 
 #include <cstring>
+#include <iostream>
 
 using namespace evf;
 using std::memcpy;
+using namespace std;
 
 FEDFrame::FEDFrame(int evt_ty, int lvl1_ID, int bx_ID, int source_ID,
 		int version, bool H, int evt_lgth, int crc, int evt_stat, int tts,
@@ -22,13 +23,10 @@ FEDFrame::FEDFrame(int evt_ty, int lvl1_ID, int bx_ID, int source_ID,
 			trailerStart_(
 					&bufferStart_[evt_lgth * BYTES_IN_WORD - TRAILER_SIZE]) {
 
-	// compute CRC16
-	unsigned short crcResult = evf::compute_crc(bufferStart_,
-			evt_lgth * BYTES_IN_WORD);
-
-	// set header and trailer, with correct CRC
+	// set header and trailer
 	FEDHeader::set(bufferStart_, evt_ty, lvl1_ID, bx_ID, source_ID, version, H);
-	FEDTrailer::set(trailerStart_, evt_lgth, crcResult, evt_stat, tts, T);
+
+	FEDTrailer::set(trailerStart_, evt_lgth, crc, evt_stat, tts, T);
 }
 
 FEDFrame::FEDFrame(int lvl1_ID, int source_ID, int evt_lgth, int crc) {
@@ -41,7 +39,7 @@ FEDFrame::FEDFrame(unsigned char* source, int evt_lgth) :
 			trailerStart_(
 					&bufferStart_[evt_lgth * BYTES_IN_WORD - TRAILER_SIZE]) {
 
-	memcpy(bufferStart_, source, evt_lgth * 8);
+	memcpy(bufferStart_, source, evt_lgth * BYTES_IN_WORD);
 
 }
 

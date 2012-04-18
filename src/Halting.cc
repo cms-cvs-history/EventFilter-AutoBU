@@ -9,7 +9,7 @@
 #include <iostream>
 
 using std::string;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 void Halting::do_entryActionWork() {
 	outermost_context().setExternallyVisibleState(stateName());
@@ -25,26 +25,36 @@ Halting::Halting(my_context c) :
 void Halting::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 
-	//resources->stopExecution() = true;
-
 	// HALTING
 	try {
-		LOG4CPLUS_INFO(resources->logger(), "Start halting ...");
+		LOG4CPLUS_INFO(resources->log_, "Start halting ...");
+
+		if (0 != PlaybackRawDataProvider::instance()
+				&& (!resources->replay_.value_ || resources->nbEventsBuilt_
+						< (uint32_t) resources->events_.size())) {
+
+			// let the playback go to the last event and exit
+			LOG4CPLUS_INFO(resources->log_, "Playback going to last event!");
+			PlaybackRawDataProvider::instance()->setFreeToEof();
+		}
 
 		// clear task queue
-		while (resources->taskQueue()->size() > 0)
-			resources->taskQueue()->pop();
-		resources->taskQueueSize() = resources->taskQueue()->size();
+		while (resources->taskQueue_.size() > 0)
+			resources->taskQueue_.pop();
+		resources->taskQueueSize_ = resources->taskQueue_.size();
 
 		// clear ReadyToSend Id's
-		while (resources->readyIds()->size() > 0)
-			resources->readyIds()->pop();
-		resources->rtsQSize() = resources->readyIds()->size();
+		while (resources->readyIds_.size() > 0)
+			resources->readyIds_.pop();
+		resources->readyToSendQueueSize_ = resources->readyIds_.size();
 
 		// reset average queue size counter
-		resources->avgTaskQueueSize() = 0;
+		resources->avgTaskQueueSize_ = 0;
 
-		LOG4CPLUS_INFO(resources->logger(), "Finished halting!");
+		resources->emptyQueues();
+		resources->resetCounters();
+
+		LOG4CPLUS_INFO(resources->log_, "Finished halting!");
 
 		EventPtr stMachEvent(new HaltDone());
 		resources->enqEvent(stMachEvent);

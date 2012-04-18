@@ -27,8 +27,6 @@ public:
 	void initialise(unsigned int evtNumber);
 	/// Returns the number of FED frames in this event
 	const unsigned int fedCount() const;
-	/// Returns an array of pointers to all superfragments in this event
-	SuperFragment** getSuperFragments() const;
 	/// Returns the BU resource ID associated to this event
 	const unsigned int getBuResourceId() const;
 	/// Returns the event number
@@ -53,7 +51,7 @@ private:
 	unsigned int buResourceId_;
 	ABUConfig config_;
 	unsigned int maxSize_;
-	SuperFragment** sFragments_;
+	std::vector<SuperFragment*> sFragments_;
 	int evtNumber_;
 	bool initialized_;
 

@@ -8,7 +8,7 @@
 #include <iostream>
 
 using std::string;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 Stopped::Stopped(my_context c) :
 	my_base(c) {

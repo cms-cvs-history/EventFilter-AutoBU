@@ -7,7 +7,7 @@
 #include "EventFilter/AutoBU/interface/SharedResources.h"
 #include <iostream>
 
-using namespace evf;
+using namespace evf::autobu_statemachine;
 using std::string;
 
 void Configuring::do_entryActionWork() {
@@ -29,10 +29,11 @@ void Configuring::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 
 	try {
-		LOG4CPLUS_INFO(resources->logger(), "Start configuring ...");
+		LOG4CPLUS_INFO(resources->log_, "Start configuring ...");
 
-		resources->reset();
-		LOG4CPLUS_INFO(resources->logger(), "Finished configuring!");
+		resources->initSemaphores();
+
+		LOG4CPLUS_INFO(resources->log_, "Finished configuring!");
 
 		EventPtr stMachEvent(new ConfigureDone());
 		resources->enqEvent(stMachEvent);

@@ -80,6 +80,10 @@ public:
 	void use();
 	/// Returns true if the current superfragment is used
 	bool isUsed() const;
+	/// Sets computeCRC_ flag to true
+	void computeCRC() {
+		computeCRC_ = true;
+	}
 
 private:
 	frlh_t frlHeader_;
@@ -90,6 +94,7 @@ private:
 	unsigned int usedFrames_;
 	unsigned int trueByteSize_;
 	bool used_;
+	bool computeCRC_;
 
 	void increaseFrlSegsize(unsigned int nBytes);
 };

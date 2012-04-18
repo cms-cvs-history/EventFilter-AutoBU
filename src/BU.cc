@@ -8,8 +8,6 @@
 //							    Andrei Spataru <andrei.cristian.spataru@cern.ch>
 ////////////////////////////////////////////////////////////////////////////////
 
-//TODO replace do_stateName with stateName()
-
 #include "EventFilter/AutoBU/interface/BU.h"
 #include "EventFilter/AutoBU/interface/BUMessageCutter.h"
 #include "EventFilter/AutoBU/interface/SoapUtils.h"
@@ -31,6 +29,7 @@ using std::string;
 using std::cout;
 using std::endl;
 using namespace evf;
+using namespace evf::autobu_statemachine;
 
 ////////////////////////////////////////////////////////////////////////////////
 // construction/destruction
@@ -46,7 +45,7 @@ BU::BU(xdaq::ApplicationStub *s) :
 	bindStateMachineCallbacks();
 
 	resources_->gui_ = new IndependentWebGUI(this);
-	resources_->gui_->setVersionString("Last modified: 22.02.2012");
+	resources_->gui_->setVersionString("Changeset: 06.04.2012->V1.08(rework)");
 
 	initialiseSharedResources(resources_);
 
@@ -111,50 +110,49 @@ BU::~BU() {
 //______________________________________________________________________________
 
 void BU::initialiseSharedResources(SharedResourcesPtr res) {
-	res->setBu(this);
-	res->setSourceId(class_.toString() + instance_.toString());
-	res->setLogger(getApplicationLogger());
-	res->setBuAppDesc(getApplicationDescriptor());
-	res->setFuAppDesc(0);
-	res->eventNumber() = 0;
-	res->setWlExecuting(0);
-	res->setAsExecuting(0);
-	res->taskQueueSize() = 0;
-	res->rtsQSize() = 0;
-	res->avgTaskQueueSize() = 0;
-	res->nbEventsInBU() = 0;
-	res->nbEventsRequested() = 0;
-	res->nbEventsBuilt() = 0;
-	res->nbEventsSent() = 0;
-	res->nbEventsDiscarded() = 0;
-	res->mode() = "RANDOM-SIMPLE";
-	res->replay() = false;
-	res->overwriteEvtId() = true;
-	res->firstEvent() = 1;
-	res->queueSize() = 256;
-	res->msgChainCreationMode() = "NORMAL";
-	res->msgBufferSize() = 32768;
-	res->fedSizeMax() = 65536;
-	res->fedSizeMean() = 16;
-	res->fedSizeWidth() = 1024;
+	res->bu_ = this;
+	res->sourceId_ = class_.toString() + instance_.toString();
+	res->log_ = getApplicationLogger();
+	res->buAppDesc_ = getApplicationDescriptor();
+	res->fuAppDesc_ = 0;
+	res->evtNumber_ = 0;
+	res->wlExecuting_ = 0;
+	res->asExecuting_ = 0;
+	res->taskQueueSize_ = 0;
+	res->readyToSendQueueSize_ = 0;
+	res->avgTaskQueueSize_ = 0;
+	res->nbEventsInBU_ = 0;
+	res->nbEventsRequested_ = 0;
+	res->nbEventsBuilt_ = 0;
+	res->nbEventsSent_ = 0;
+	res->nbEventsDiscarded_ = 0;
+	res->mode_ = "RANDOM";
+	res->replay_ = false;
+	res->overwriteEvtId_ = true;
+	res->firstEvent_ = 1;
+	res->queueSize_ = 256;
+	res->msgChainCreationMode_ = "NORMAL";
+	res->msgBufferSize_ = 32768;
+	res->fedSizeMax_ = 65536;
+	res->fedSizeMean_ = 16;
+	res->fedSizeWidth_ = 1024;
 
 	// allocate i2o memory pool
-	string i2oPoolName = res->sourceId() + "_i2oPool";
+	string i2oPoolName = res->sourceId_ + "_i2oPool";
 	try {
 		toolbox::mem::HeapAllocator *allocator =
 				new toolbox::mem::HeapAllocator();
 		toolbox::net::URN urn("toolbox-mem-pool", i2oPoolName);
 		toolbox::mem::MemoryPoolFactory* poolFactory =
 				toolbox::mem::getMemoryPoolFactory();
-		res->setI2OPool(poolFactory->createPool(urn, allocator));
+		res->i2oPool_ = poolFactory->createPool(urn, allocator);
 	} catch (toolbox::mem::exception::Exception& e) {
 		string s = "Failed to create pool: " + i2oPoolName;
-		LOG4CPLUS_FATAL(res->logger(), s);
+		LOG4CPLUS_FATAL(res->log_, s);
 		XCEPT_RETHROW(xcept::Exception, s, e);
 	}
 
 	res->initialiseQSizes();
-	res->restarted() = false;
 }
 
 //______________________________________________________________________________
@@ -196,19 +194,8 @@ xoap::MessageReference BU::handleFSMSoapMessage(xoap::MessageReference msg)
 
 		} else if (command == "Stop") {
 
-			// UPDATE: BU:stop = halt + configure
-			/*
-			 EventPtr stMachEvent(new Stop());
-			 resources_->enqEvent(stMachEvent);
-			 */
-			EventPtr halt(new Halt());
-			resources_->enqEvent(halt);
-
-			while (fsm_->getExternallyVisibleState().compare("Halted") != 0)
-				::sleep(1);
-
-			EventPtr configure(new Configure());
-			resources_->enqEvent(configure);
+			EventPtr stMachEvent(new Stop());
+			resources_->enqEvent(stMachEvent);
 
 		} else if (command == "Halt") {
 
@@ -230,7 +217,7 @@ xoap::MessageReference BU::handleFSMSoapMessage(xoap::MessageReference msg)
 
 	} catch (xcept::Exception& e) {
 		string s = "Exception on FSM Callback!";
-		LOG4CPLUS_FATAL(resources_->logger(), s);
+		LOG4CPLUS_FATAL(resources_->log_, s);
 		XCEPT_RETHROW(xcept::Exception, s, e);
 	}
 
@@ -245,10 +232,10 @@ void BU::I2O_BU_ALLOCATE_Callback(toolbox::mem::Reference *bufRef) {
 	} catch (xcept::Exception& e) {
 		string s = "Exception in I2O_BU_ALLOCATE_Callback: "
 				+ (string) e.what();
-		LOG4CPLUS_FATAL(resources_->logger(), s);
+		LOG4CPLUS_FATAL(resources_->log_, s);
 		XCEPT_RETHROW(xcept::Exception, s, e);
 	} catch (...) {
-		LOG4CPLUS_FATAL(resources_->logger(),
+		LOG4CPLUS_FATAL(resources_->log_,
 				"Exception in I2O_BU_ALLOCATE_Callback");
 	}
 }
@@ -260,10 +247,10 @@ void BU::I2O_BU_DISCARD_Callback(toolbox::mem::Reference *bufRef) {
 		handleI2ODiscard(bufRef);
 	} catch (xcept::Exception& e) {
 		string s = "Exception in I2O_BU_DISCARD_Callback: " + (string) e.what();
-		LOG4CPLUS_FATAL(resources_->logger(), s);
+		LOG4CPLUS_FATAL(resources_->log_, s);
 		XCEPT_RETHROW(xcept::Exception, s, e);
 	} catch (...) {
-		LOG4CPLUS_FATAL(resources_->logger(),
+		LOG4CPLUS_FATAL(resources_->log_,
 				"Exception in I2O_BU_DISCARD_Callback");
 	}
 }
@@ -275,15 +262,13 @@ void BU::actionPerformed(xdata::Event& e) {
 	resources_->gui_->monInfoSpace()->lock();
 	if (e.type() == "urn:xdata-event:ItemGroupRetrieveEvent") {
 		if (0 != PlaybackRawDataProvider::instance())
-			resources_->mode() = "PLAYBACK";
+			resources_->mode_ = "PLAYBACK";
 
-		if (0 != resources_->i2oPool())
-			memUsedInMB_ = resources_->i2oPool()->getMemoryUsage().getUsed()
+		if (0 != resources_->i2oPool_)
+			memUsedInMB_ = resources_->i2oPool_->getMemoryUsage().getUsed()
 					* 9.53674e-07;
 		else
 			memUsedInMB_ = 0.0;
-	} else if (e.type() == "ItemChangedEvent") {
-		string item = dynamic_cast<xdata::ItemChangedEvent&> (e).itemName();
 	}
 	resources_->gui_->monInfoSpace()->unlock();
 }
@@ -311,14 +296,13 @@ void BU::customWebPage(xgi::Input*in, xgi::Output*out)
 void BU::startEventProcessingWorkloop() throw (evf::Exception) {
 
 	try {
-		LOG4CPLUS_INFO(resources_->logger(),
-				"Start 'EVENT PROCESSING' workloop");
+		LOG4CPLUS_INFO(resources_->log_, "Start 'EVENT PROCESSING' workloop");
 		wlProcessingEvents_ = toolbox::task::getWorkLoopFactory()->getWorkLoop(
-				resources_->sourceId() + "Processing Events", "waiting");
+				resources_->sourceId_ + "Processing Events", "waiting");
 		if (!wlProcessingEvents_->isActive())
 			wlProcessingEvents_->activate();
 		asProcessingEvents_ = toolbox::task::bind(this, &BU::processing,
-				resources_->sourceId() + "Processing");
+				resources_->sourceId_ + "Processing");
 		wlProcessingEvents_->submit(asProcessingEvents_);
 	} catch (xcept::Exception& e) {
 		string msg = "Failed to start workloop 'EVENT PROCESSING'.";
@@ -334,19 +318,6 @@ bool BU::processing(toolbox::task::WorkLoop* wl) {
 	if (topEvent != 0) {
 
 		string type(typeid(*topEvent).name());
-		string procMsg = "AutoBU-->Processing event: " + type;
-
-		LOG4CPLUS_INFO(resources_->logger(), procMsg);
-
-		// if event is ConfigureDone or HaltDone, also reset gui counters
-		size_t foundC, foundH;
-		foundC = type.rfind("ConfigureDone");
-		foundH = type.rfind("HaltDone");
-
-		if (foundC != string::npos || foundH != string::npos) {
-			LOG4CPLUS_INFO(resources_->logger(), "Resetting counters");
-			resources_->gui_->resetCounters();
-		}
 
 		fsm_->process_event(*topEvent);
 		try {
@@ -384,7 +355,7 @@ void BU::postI2OFrame(xdaq::ApplicationDescriptor* fuAppDesc,
 void BU::exportParameters() {
 	SharedResourcesPtr res = fsm_->getSharedResources();
 	if (0 == resources_->gui_) {
-		LOG4CPLUS_ERROR(res->logger(), "No GUI, can't export parameters");
+		LOG4CPLUS_ERROR(res->log_, "No GUI, can't export parameters");
 		return;
 	}
 
@@ -393,36 +364,40 @@ void BU::exportParameters() {
 	resources_->gui_->addMonitorParam("instance", &instance_);
 	resources_->gui_->addMonitorParam("hostname", &hostname_);
 	resources_->gui_->addMonitorParam("runNumber", &runNumber_);
-	resources_->gui_->addMonitorParam("stateName", fsm_->getExternallyVisibleStatePtr());
+	resources_->gui_->addMonitorParam("stateName",
+			fsm_->getExternallyVisibleStatePtr());
 	resources_->gui_->addMonitorParam("memUsedInMB", &memUsedInMB_);
 
-	resources_->gui_->addMonitorCounter("taskQueueSize", &res->taskQueueSize());
+	resources_->gui_->addMonitorCounter("taskQueueSize", &res->taskQueueSize_);
 	resources_->gui_->addMonitorCounter("readyToSendQueueSize",
-			&res->rtsQSize());
+			&res->readyToSendQueueSize_);
 	resources_->gui_->addMonitorCounter("avgTaskQueueSize",
-			&res->avgTaskQueueSize());
-	resources_->gui_->addMonitorCounter("nbEvtsInBU", &res->nbEventsInBU());
+			&res->avgTaskQueueSize_);
+	resources_->gui_->addMonitorCounter("nbEvtsInBU", &res->nbEventsInBU_);
 	resources_->gui_->addMonitorCounter("nbEvtsRequested",
-			&res->nbEventsRequested());
-	resources_->gui_->addMonitorCounter("nbEvtsBuilt", &res->nbEventsBuilt());
-	resources_->gui_->addMonitorCounter("nbEvtsSent", &res->nbEventsSent());
+			&res->nbEventsRequested_);
+	resources_->gui_->addMonitorCounter("nbEvtsBuilt", &res->nbEventsBuilt_);
+	resources_->gui_->addMonitorCounter("nbEvtsSent", &res->nbEventsSent_);
 	resources_->gui_->addMonitorCounter("nbEvtsDiscarded",
-			&res->nbEventsDiscarded());
+			&res->nbEventsDiscarded_);
 
-	resources_->gui_->addStandardParam("mode", &res->mode());
-	resources_->gui_->addStandardParam("replay", &res->replay());
-	resources_->gui_->addStandardParam("overwriteEvtId", &res->overwriteEvtId());
-	resources_->gui_->addStandardParam("firstEvent", &res->firstEvent());
-	resources_->gui_->addStandardParam("queueSize", &res->queueSize());
+	resources_->gui_->addStandardParam("mode", &res->mode_);
+	resources_->gui_->addStandardParam("replay", &res->replay_);
+	resources_->gui_->addStandardParam("overwriteEvtId", &res->overwriteEvtId_);
+	resources_->gui_->addStandardParam("crc", &res->crc_);
+	resources_->gui_->addStandardParam("firstEvent", &res->firstEvent_);
+	resources_->gui_->addStandardParam("queueSize", &res->queueSize_);
 	resources_->gui_->addStandardParam("eventBufferSize", &eventBufferSize_);
-	resources_->gui_->addStandardParam("msgBufferSize", &res->msgBufferSize());
-	resources_->gui_->addStandardParam("fedSizeMax", &res->fedSizeMax());
-	resources_->gui_->addStandardParam("fedSizeMean", &res->fedSizeMean());
-	resources_->gui_->addStandardParam("fedSizeWidth", &res->fedSizeWidth());
+	resources_->gui_->addStandardParam("msgBufferSize", &res->msgBufferSize_);
+	resources_->gui_->addStandardParam("fedSizeMax", &res->fedSizeMax_);
+	resources_->gui_->addStandardParam("fedSizeMean", &res->fedSizeMean_);
+	resources_->gui_->addStandardParam("fedSizeWidth", &res->fedSizeWidth_);
+	resources_->gui_->addStandardParam("useFixedFedSize",
+			&res->useFixedFedSize_);
 	resources_->gui_->addStandardParam("initialSuperFragmentSize",
 			&initialSFBuffer_);
 	resources_->gui_->addStandardParam("msgChainCreationMode",
-			&res->msgChainCreationMode());
+			&res->msgChainCreationMode_);
 
 	resources_->gui_->addStandardParam("rcmsStateListener",
 			fsm_->rcmsStateListener());
@@ -443,22 +418,21 @@ void BU::handleI2OAllocate(toolbox::mem::Reference *bufRef) const {
 	stdMsg = (I2O_MESSAGE_FRAME*) bufRef->getDataLocation();
 	msg = (I2O_BU_ALLOCATE_MESSAGE_FRAME*) stdMsg;
 
-	if (0 == resources_->fuAppDesc()) {
+	if (0 == resources_->fuAppDesc_) {
 		I2O_TID fuTid = stdMsg->InitiatorAddress;
-		resources_->setFuAppDesc(
-				i2o::utils::getAddressMap()->getApplicationDescriptor(fuTid));
+		resources_->fuAppDesc_
+				= i2o::utils::getAddressMap()->getApplicationDescriptor(fuTid);
 	}
 
 	for (unsigned int i = 0; i < msg->n; i++) {
 		unsigned int fuResourceId = msg->allocate[i].fuTransactionId;
 
+		resources_->lock();
 		// TASK
 		resources_->pushTask('r');
-
-		resources_->lock();
-		resources_->rqstIds()->push(fuResourceId);
-		resources_->increaseEventsRequested();
-		resources_->increaseEventsInBU();
+		resources_->rqstIds_.push(fuResourceId);
+		resources_->nbEventsRequested_++;
+		resources_->nbEventsInBU_++;
 		resources_->unlock();
 	}
 
@@ -474,16 +448,16 @@ void BU::handleI2ODiscard(toolbox::mem::Reference *bufRef) const {
 	unsigned int buResourceId = msg->buResourceId[0];
 
 	resources_->lock();
-	int result = resources_->sentIds()->erase(buResourceId);
+	int result = resources_->sentIds_.erase(buResourceId);
 	resources_->unlock();
 
 	if (!result) {
-		LOG4CPLUS_ERROR(resources_->logger(),
+		LOG4CPLUS_ERROR(resources_->log_,
 				"can't discard unknown buResourceId '" << buResourceId << "'");
 	} else {
 		resources_->lock();
-		resources_->freeIds()->push(buResourceId);
-		resources_->increaseEventsDiscarded();
+		resources_->freeIds_.push(buResourceId);
+		resources_->nbEventsDiscarded_.value_++;
 		resources_->unlock();
 
 		// TASK

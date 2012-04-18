@@ -10,7 +10,7 @@
 #include <iostream>
 
 using std::string;
-using namespace evf;
+using namespace evf::autobu_statemachine;
 
 Enabling::Enabling(my_context c) :
 	my_base(c) {
@@ -30,41 +30,33 @@ Enabling::~Enabling() {
 void Enabling::do_stateAction() const {
 	SharedResourcesPtr resources = outermost_context().getSharedResources();
 
+	// from configuring
+	resources->populateEvents();
+
 	// set stopExecution flag to false
-	resources->stopExecution() = false;
+	resources->stopExecution_ = false;
 
 	try {
 		// playback case
+		if (0 != PlaybackRawDataProvider::instance()) {
+			for (unsigned int i = 0; i < (unsigned int) FEDNumbering::MAXFEDID
+					+ 1; i++)
+				if (FEDNumbering::inRange(i))
+					resources->validFedIds_.push_back(i);
 
-		/*
-		 * for PLAYBACK mode, keeping only valid id's returned by
-		 * FEDNumbering::inRangeNoGT makes file processing faster
-		 */
-		//if (/*0 != PlaybackRawDataProvider::instance()*/ ) {
-		if (false) {
-			if (!resources->restarted()) {
-				for (unsigned int i = 0; i
-						< (unsigned int) FEDNumbering::MAXFEDID + 1; i++)
-					if (FEDNumbering::inRange(i))
-						resources->validFedIds()->push_back(i);
-			}
 			// random case
 		} else {
 			// put valid fed id's in
-			if (!resources->restarted()) {
-				for (unsigned int i = 0; i
-						< (unsigned int) FEDNumbering::MAXFEDID + 1; i++)
-					if (FEDNumbering::inRangeNoGT(i))
-						resources->validFedIds()->push_back(i);
-			}
+			for (unsigned int i = 0; i < (unsigned int) FEDNumbering::MAXFEDID
+					+ 1; i++)
+				if (FEDNumbering::inRangeNoGT(i))
+					resources->validFedIds_.push_back(i);
+
 		}
 
 		// put initial build requests in
-		// if entering state for the first time
-		if (!resources->restarted()) {
-			for (unsigned int i = 0; i < resources->queueSize(); i++) {
-				resources->pushTask('b');
-			}
+		for (unsigned int i = 0; i < resources->queueSize_; i++) {
+			resources->pushTask('b');
 		}
 
 		// ENABLING
@@ -76,7 +68,6 @@ void Enabling::do_stateAction() const {
 
 	} catch (xcept::Exception &e) {
 		string msg = "enabling FAILED: " + (string) e.what();
-		//fsm_.fireFailed(msg, this);
 		EventPtr stMachEvent(new Fail());
 		resources->enqEvent(stMachEvent);
 	}

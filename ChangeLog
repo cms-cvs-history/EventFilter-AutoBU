@@ -1,3 +1,8 @@
+2012-04-18  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
+	* tag V02-00-00
+	* reworked
+	* fixed issues with playback and CRC
+
 2012-03-16  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
 	* changed FSM to boost::statechart
 
