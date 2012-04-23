@@ -29,13 +29,12 @@ void Stopping::do_stateAction() const {
 	try {
 		LOG4CPLUS_INFO(resources->log_, "Start stopping :) ...");
 
-		if (0 != PlaybackRawDataProvider::instance()
-				&& (!resources->replay_.value_ || resources->nbEventsBuilt_
-						< (uint32_t) resources->events_.size())) {
-
+		if (0 != PlaybackRawDataProvider::instance()) {
 			// let the playback go to the last event and exit
 			LOG4CPLUS_INFO(resources->log_, "Playback going to last event!");
 			PlaybackRawDataProvider::instance()->setFreeToEof();
+			while (!PlaybackRawDataProvider::instance()->areFilesClosed()) usleep(1000000);
+			usleep(100000);
 		}
 
 		// clear task queue

@@ -229,8 +229,8 @@ bool Executing::generateEvent(ABUEvent* evt) const {
 	// replay?
 	if (resources->replay_.value_ && resources->nbEventsBuilt_
 			>= (uint32_t) resources->events_.size()) {
-
-		PlaybackRawDataProvider::instance()->setFreeToEof();
+                if (0!=PlaybackRawDataProvider::instance())
+		  PlaybackRawDataProvider::instance()->setFreeToEof();
 		return true;
 	}
 

@@ -111,7 +111,9 @@ void SharedResources::populateEvents() {
 bool SharedResources::pushTask(unsigned char type) {
 	qLock();
 	if (taskQueue_.size() <= MAX_TASK_QUEUE_SIZE) {
-		buTaskId_ = buTaskId_++ % 0x1000000;
+		//buTaskId_ = buTaskId_++ % 0x1000000;
+		buTaskId_++;
+	       	buTaskId_%=0x1000000;
 		BUTask rqst(buTaskId_, type);
 		taskQueue_.push(rqst);
 		taskQueueSize_++;
