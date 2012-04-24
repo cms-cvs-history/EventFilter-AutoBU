@@ -15,12 +15,17 @@ my $usage =
     "\t-u                   (db user   [default: cms_hltdev_reader])\n" .
     "\t-c                   (full path of configuration to retrieve)\n\n";
 
+my $cdir = `pwd`;
 die $usage if @ARGV<2;
 
 if (!-e $converter_jar)
 {
+	#chdir "$confdbbase/lib";
+    #print `pwd`;
     print "\nBuilding $converter_jar ...\n";
-    `ant converter`;
+    system("cd $confdbbase/ ; pwd ; ant converter ; cd $cdir");
+    #`cd $confdbbase/lib ; ant converter ; cd $cdir`;
+    #chdir "$cdir";
 
     if (-e $converter_jar)
     {

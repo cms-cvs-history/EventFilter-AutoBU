@@ -19,7 +19,6 @@ print "\n============================================================\n";
 
 # run number
 my $runNumber = 10;
-my $forceEvType = 99;
 my $smOut = 2;
 
 # flags to indicate setup, defaults
@@ -32,6 +31,7 @@ my $doDQM = 1;
 my $useStepper = 0;
 my $useAtcp = 1;
 my $forkProcesses = 0;
+my $forkFrom = 0;
 
 my $PBfile;
 my $EPcfg = "";
@@ -123,8 +123,8 @@ my $usage =
     "\t-playback <file>     (playback file <file>       [default: dummy data   ])\n" .
     "\t-replay              (loop on playback input     [default: single pass  ])\n" .
     "\t-fork <n>            (fork n EP processes        [default: no fork      ])\n" .
+    "\t-forkFrom <n>        (sequentially fork from N   [default: same as fork ])\n" .
     "\t-emulateLS <n>       (emulate LS every n events  [default: LS from data ])\n" .
-    "\t-forceEvType <n>     (emulate event type         [default: no force     ])\n" .
     "\t-smOut  <n>          (hltBoolEnd pass:1,fail:0   [default: no change    ])\n" .
     "\t-runNumber <n>       (assign run number n        [default: 10           ])\n" .
     "\t-startAll            (configure and enable all   [default: off          ])\n\n";
@@ -157,8 +157,10 @@ foreach $param (@ARGV) {
     elsif ($param    eq "-noiDie")   { $doID=0; }
     elsif ($param    eq "-cfg")      { $doPyCfg=0; }
     elsif ($param    eq "-replay")   { $replay="true"; }
-    elsif ($param    eq "-fork")     { $forkProcesses="fillme"; }
-    elsif ($forkProcesses    eq "fillme")    { $forkProcesses   =$param; }
+    elsif ($param    eq "-fork")     { $forkProcesses="fillme";}
+    elsif ($forkProcesses    eq "fillme")    { $forkProcesses   =$param; $forkFrom=$param; }
+    elsif ($param    eq "-forkFrom") { $forkFrom="fillme";}
+    elsif ($forkFrom eq "fillme")    { $forkFrom=$param; }
     elsif ($param    eq "-egAction") { $egAction ="fillme"; }
     elsif ($egAction     eq "fillme")    { $egAction   =$param; }
     elsif ($param    eq "-egQualif") { $egQualif ="fillme"; }
@@ -167,8 +169,6 @@ foreach $param (@ARGV) {
     elsif ($emulateLS    eq "fillme")    { $emulateLS   =$param; }
     elsif ($param    eq "-runNumber")        { $runNumber="fillme"; }
     elsif ($runNumber    eq "fillme")    { $runNumber   =$param; }
-    elsif ($param    eq "-forceEvType")  { $forceEvType="fillme"; }
-    elsif ($forceEvType eq "fillme")     { $forceEvType=$param; }
     elsif ($param    eq "-smOut")        { $smOut="fillme"; }
     elsif ($smOut eq "fillme")           { $smOut=$param; }
     elsif ($param eq "-startAll")        { $startAll=1; }
@@ -215,17 +215,18 @@ if ($DBcfg) {
     print "NOTE: retrieving HLT menu from DB\n\n";  
 #    if(!-e "$ConfDBperl/onlineConverter") {die "DB retrieval of HLT menu not available from $ConfDBperl\n";}
     system("$onlineConverterCmd -d cms_rcms.cern.ch -h cmsonr1-v.cms -u CMS_HLT_R -c $DBcfg");
-    if($emulateLS){
+
+#    if($emulateLS){
 #	system("csplit EP.py /readerPlugin/; cat xx00 > EPP.py; echo \"    evtsPerLS = cms.untracked.uint32($emulateLS),\" >> EPP.py; echo \"    useEventCounter = cms.untracked.bool(True),\" >> EPP.py; cat xx01 >> EPP.py; mv EPP.py EP.py");
-	system("csplit EP.py /readerPlugin/; cat xx00 > EPP.py; echo \"    evtsPerLS = cms.untracked.uint32($emulateLS),\" >> EPP.py; cat xx01 >> EPP.py; mv EPP.py EP.py; echo \"process.source.useEventCounter = cms.untracked.bool(True) \" >> EP.py ;");
-    }
-    if ($forceEvType!=99) {
-	    #system("echo  \"process.hltTriggerType.SelectedTriggerType = $forceEvType \" >> EP.py ;");
-        system("echo  \"process.source.fakeEventType = cms.untracked.uint32($forceEvType) \" >> EP.py ;");
-    }
+#	system("csplit EP.py /readerPlugin/; cat xx00 > EPP.py; echo \"    evtsPerLS = cms.untracked.uint32($emulateLS),\" >> EPP.py; cat xx01 >> EPP.py; mv EPP.py EP.py; echo \"process.source.useEventCounter = cms.untracked.bool(True) \" >> EP.py ;");
+#    }
+
     if ($smOut==1) { system("echo \"process.hltBoolEnd.result=cms.bool(True)\">>EP.py;") };
     if ($smOut==0) { system("echo \"process.hltBoolEnd.result=cms.bool(False)\">>EP.py;") };
-
+    if($emulateLS) { 
+	    system("echo \"process.source.evtsPerLS=cms.untracked.uint32($emulateLS)\" >> EP.py;"); 
+	    system("echo \"process.source.useEventCounter=cms.untracked.bool(True)\" >> EP.py;");
+    };
     $EPcfg = "$pwd/EP.py";
     $SMcfg = "$pwd/SM.py";
 }
@@ -317,12 +318,14 @@ if ($doSM) { push (@apps,$SMappname); push (@apps,$SMlocalid); push (@apps,0); }
 
 my @BUproperties = ("runNumber","unsignedInt",$runNumber,
 		    "replay","boolean",$replay,
-		    "queueSize","unsignedInt","512",
+		    "queueSize","unsignedInt","1024",
+#		    "queueSize","unsignedInt","4096",
+#		    "queueSize","unsignedInt","8192",
 		    "fedSizeMean","unsignedInt","16",
 #		    "crc","boolean","false",
-#		    "useFixedFedSize","boolean","false",
 #		    "useFixedFedSize","boolean","true",
-		    "mode","string","PLAYBACK",
+#		    "useFixedFedSize","boolean","false",
+#		    "mode","string","PLAYBACK",#
 		    "overwriteEvtId","boolean","true",
 		    "eventBufferSize","unsignedInt","0x400000");
 
@@ -331,7 +334,6 @@ my @PBproperties = ("parameterSet",      "string","file:$PBcfg",
 		    "hasSharedMemory",   "boolean","false",
 		    "hasPrescaleService","boolean","false",
 #disabled because it is patch to FUEP
-#		    "delayedStartSecs","unsignedInt", "10",
 		    "nbSubProcesses","unsignedInt", 0,
 		    "timeoutOnStop", "unsignedInt", 20,
 		    "isRunNumberSetter", "boolean","false");
@@ -341,9 +343,10 @@ my @RBproperties = ("runNumber",   "unsignedInt",$runNumber,
 		    "buClassName", "string",     $BUappname,
 		    "doCrcCheck",  "unsignedInt","0",
 		    "processKillerEnabled","boolean","false",
-		    "monSleepSec", "unsignedInt","5",
+		    "monSleepSec", "unsignedInt","4",
+		    "watchSleepSec", "unsignedInt","30",
 		    "nbRawCells",  "unsignedInt","64",
-		    "nbRecoCells", "unsignedInt","8",
+		    "nbRecoCells", "unsignedInt","20",
 		    "nbDqmCells",  "unsignedInt","8",
 		    "rawCellSize", "unsignedInt","0x400000",
 		    "recoCellSize","unsignedInt","0x800000",
@@ -357,8 +360,11 @@ my @EPproperties = ("parameterSet",  "string",      "file:$EPcfg",
 		    "runNumber",     "unsignedInt", $runNumber,
 		    "autoRestartSlaves","boolean","true",
 #disabled because it is patch to FUEP
-#		    "delayedStartSecs","unsignedInt", "250",
-		    "nbSubProcesses","unsignedInt", $forkProcesses);
+		    "incrementSlavesMax","unsignedInt", $forkProcesses,
+		    "incrementSlavesMin","unsignedInt", $forkFrom,
+                    "forkInEDM","unsignedInt","1",
+		    "nbSubProcesses","unsignedInt", $forkProcesses,
+	            "superSleepSec","unsignedInt",2);
 if($doID) { 
     push (@EPproperties,"iDieUrl","string","http://$hostname:$IDport/urn:xdaq-application:lid=$IDlocalid");
     push (@EPproperties,"iDieStatisticsGathering","boolean","true");
@@ -1116,6 +1122,7 @@ sub makeCfgPlayback
     $result = $result . "  {\n";
     $result = $result . "    untracked uint32 queueSize = 32\n";
     $result = $result . "  }\n\n";
+
     $result = $result . "}\n";
     
     return $result;
@@ -1181,6 +1188,14 @@ sub makeCfgPlaybackPython
 
     $result = $result . "process.playback = cms.EDAnalyzer(\"PlaybackRawDataProvider\",\n";
     $result = $result . "   queueSize = cms.untracked.uint32(32)\n";
+    $result = $result . ")\n\n";
+
+    $result = $result . "process.FUShmDQMOutputService = cms.Service( \"FUShmDQMOutputService\",\n";
+    $result = $result . "   lumiSectionInterval = cms.untracked.int32( 0 ),\n";
+    $result = $result . "   compressionLevel = cms.int32( 1 ),\n";
+    $result = $result . "   initialMessageBufferSize = cms.untracked.int32( 1000000 ),\n";
+    $result = $result . "   lumiSectionsPerUpdate = cms.double( 1.0 ),\n";
+    $result = $result . "   useCompression = cms.bool( True )\n";
     $result = $result . ")\n\n";
 
     $result = $result . "#path(s)\n";
