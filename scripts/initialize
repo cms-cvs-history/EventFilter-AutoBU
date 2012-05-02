@@ -700,7 +700,12 @@ sub getLibraryPath
     if (-e "$cmssw_base/src/$pkg") {
 	$result = $cmssw_base . $result;
     }
+    elsif (-e "cmssw_release_base/src/$pkg") {
+    	$result = $cmssw_release_base . $result;
+    }
     else {
+	# Look into the base release, too
+	$cmssw_release_base =~ s/(.*)-patch(.*)_patch[0-9]$/\1\2/;
 	$result = $cmssw_release_base . $result;
     }
 
