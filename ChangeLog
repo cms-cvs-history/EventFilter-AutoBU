@@ -1,3 +1,8 @@
+2012-05-07 Srecko Morovic <srecko.morovic@cern.ch>
+
+	* tag V02-00-01
+	* tagging the changes to support waiting-for-playback in NewAutoBU
+
 2012-04-18  Andrei Spataru  <andrei.cristian.spataru@cern.ch>
 	* tag V02-00-00
 	* reworked
