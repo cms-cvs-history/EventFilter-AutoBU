@@ -316,7 +316,7 @@ xoap::MessageReference BU::fsmCallback(xoap::MessageReference msg)
 
 
 //______________________________________________________________________________
-void BU::I2O_BU_ALLOCATE_Callback(toolbox::mem::Reference *bufRef)
+void BU::I2O_BU_ALLOCATE_Callback(toolbox::mem::Reference *bufRef) throw (i2o::exception::Exception)
 {
   if (isHalting_) {
     LOG4CPLUS_WARN(log_,"Ignore BU_ALLOCATE message while halting.");
@@ -350,7 +350,7 @@ void BU::I2O_BU_ALLOCATE_Callback(toolbox::mem::Reference *bufRef)
 
 
 //______________________________________________________________________________
-void BU::I2O_BU_DISCARD_Callback(toolbox::mem::Reference *bufRef)
+void BU::I2O_BU_DISCARD_Callback(toolbox::mem::Reference *bufRef) throw (i2o::exception::Exception)
 {
   if (isHalting_) {
     LOG4CPLUS_WARN(log_,"Ignore BU_DISCARD message while halting.");
