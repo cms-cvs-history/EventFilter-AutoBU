@@ -762,7 +762,6 @@ bool BU::generateEvent(BUEvent* evt)
       PlaybackRawDataProvider::instance()->getFEDRawData(runNumber,evtNumber);
     if(event == 0) return false;
     evt->initialize(evtNumber);
-    
     for (unsigned int i=0;i<validFedIds_.size();i++) {
       unsigned int   fedId  =validFedIds_[i];
       unsigned int   fedSize=event->FEDData(fedId).size();
@@ -811,6 +810,20 @@ toolbox::mem::Reference *BU::createMsgChain(BUEvent* evt,
   if((msgPayloadSize%4)!=0) LOG4CPLUS_ERROR(log_,"Invalid Payload Size.");
  
   /*Overwrite lumisection value stored in the event*/
+  if (overwriteEvtId_.value_) {
+  
+    for (size_t k=0;k<validFedIds_.size();k++) {
+      if (evt->fedId(k)==FEDNumbering::MINTriggerGTPFEDID) {
+	unsigned char * fgtpAddr = evt->fedAddr(k);
+	unsigned int fgtpSize = evt->fedSize(k);
+	if (fgtpAddr && fgtpSize) {
+          if (evtn::evm_board_sense(fgtpAddr,fgtpSize))
+	  *((unsigned int*)(fgtpAddr + evtn::offset(true))) = evt->evtNumber();
+	}
+      }
+    }
+  }
+
   if (overwriteLsId_.value_) {
     //getting new time and increase LS if past 23 sec
     struct timezone tz;
@@ -958,7 +971,7 @@ toolbox::mem::Reference *BU::createMsgChain(BUEvent* evt,
       frlh_t* frlHeader=(frlh_t*)startOfPayload;
       frlHeader->trigno=evt->evtNumber();
       frlHeader->segno =iBlock;
-      
+     
       unsigned char *startOfFedBlocks=startOfPayload+frlHeaderSize_;
       payload              -=frlHeaderSize_;
       frlHeader->segsize    =payload;
